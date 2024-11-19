@@ -90,13 +90,19 @@ async def button_handler(update: Update, context: CallbackContext):
         await restart_tunnel(update, context)
     elif query.data == "stop_tunnel":
         await stop_tunnel(update, context)
+    elif query.data.startswith("ban_"):
+        ip = query.data.split("_")[1]
+        await ban_ip(chat_id, ip, context)
+    elif query.data.startswith("unban_"):
+        ip = query.data.split("_")[1]
+        await unban_ip(chat_id, ip, context)
 
 # Function to display traffic statistics
 async def traffic_stats(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("network-stats")
     if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=u"❌ خطا: {data['error']}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
 
     message = u"📊 آمار ترافیک:\n"
@@ -115,18 +121,18 @@ async def system_metrics(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("metrics")
     if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=u"❌ خطا: {data['error']}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
 
     message = (
         f"💻 وضعیت سیستم:\n"
         f"🔹 استفاده از CPU: {data['cpu_usage']}%\n"
         f"🔹 استفاده از RAM: {data['ram_usage']}%\n"
-        f"🔹 زمان روشن بودن سیستم: {data['uptime']}\n"
+        f"🔹 زمان روشن بودن سیستم: {data.get('uptime', 'نامشخص')}\n"
     )
     await context.bot.send_message(chat_id=chat_id, text=message)
 
-# Function to show connected public IPs
+# Function to show connected public IPs with buttons to ban or unban
 async def connected_ips(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("public-ip-settings")
@@ -135,8 +141,31 @@ async def connected_ips(update: Update, context: CallbackContext):
         return
 
     message = u"🌐 ایپی‌های متصل:\n"
+    keyboard = []
+
     for ip, status in data["ip_status"].items():
-        message += f"🔹 IP: {ip} - وضعیت: {'مسدود' if status == 'banned' else 'فعال'}\n"
+        status_text = "🔴 مسدود" if status == "banned" else "🟢 فعال"
+        message += f"<b>IP: {ip}</b> - وضعیت: {status_text}\n"
+
+        # Add buttons for each IP
+        if status == "banned":
+            keyboard.append([InlineKeyboardButton(f"🚫 رفع انسداد {ip}", callback_data=f"unban_{ip}")])
+        else:
+            keyboard.append([InlineKeyboardButton(f"🔒 مسدود کردن {ip}", callback_data=f"ban_{ip}")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="HTML")
+
+# Function to handle banning an IP
+async def ban_ip(chat_id, ip, context):
+    response = make_api_request("ban-ip", method="POST", data={"ip": ip})
+    message = f"✅ IP {ip} مسدود شد." if "message" in response else f"❌ خطا: {response.get('error')}"
+    await context.bot.send_message(chat_id=chat_id, text=message)
+
+# Function to handle unbanning an IP
+async def unban_ip(chat_id, ip, context):
+    response = make_api_request("unban-ip", method="POST", data={"ip": ip})
+    message = f"✅ IP {ip} رفع انسداد شد." if "message" in response else f"❌ خطا: {response.get('error')}"
     await context.bot.send_message(chat_id=chat_id, text=message)
 
 # Function to display tunnel logs
