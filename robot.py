@@ -95,12 +95,16 @@ async def system_metrics(update: Update, context: CallbackContext):
 # Function to ban an IP address
 async def ban_ip(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
-    ip = update.message.text
-    response = requests.post(f"{API_BASE_URL}/ban-ip", json={"ip": ip})
-    if response.status_code == 200:
-        await context.bot.send_message(chat_id=chat_id, text=f"🚫 IP {ip} با موفقیت مسدود شد.")
-    else:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا در مسدود کردن IP: {response.text}")
+    ip = update.message.text.strip()  # Ensure there are no extra spaces around the IP
+    try:
+        response = requests.post(f"{API_BASE_URL}/ban-ip", json={"ip": ip})
+        if response.status_code == 200:
+            await context.bot.send_message(chat_id=chat_id, text=f"🚫 IP {ip} با موفقیت مسدود شد.")
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا در مسدود کردن IP: {response.text}")
+    except Exception as e:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {str(e)}")
+
 
 # Function to unban an IP address
 async def unban_ip(update: Update, context: CallbackContext):
