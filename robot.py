@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import os
 import json
 import requests
@@ -54,12 +53,9 @@ def make_api_request(endpoint, method="GET", data=None):
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
 
-# Function to start the bot and show options
-async def start(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
+# Function to show the main menu
+async def show_menu(chat_id, context):
     message = u"🤖 به ربات مانیتورینگ Azumi خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
-
-    # Girlish-style buttons
     keyboard = [
         [InlineKeyboardButton(u"📊 آمار ترافیک", callback_data="traffic_stats")],
         [InlineKeyboardButton(u"💻 وضعیت سیستم", callback_data="system_metrics")],
@@ -67,10 +63,15 @@ async def start(update: Update, context: CallbackContext):
         [InlineKeyboardButton(u"📝 مشاهده لاگ‌ها", callback_data="tunnel_logs")],
         [InlineKeyboardButton(u"🔄 ریست تانل", callback_data="restart_tunnel")],
         [InlineKeyboardButton(u"🛑 توقف تانل", callback_data="stop_tunnel")],
+        [InlineKeyboardButton(u"🚪 خروج", callback_data="exit")]
     ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
+# Function to start the bot and show the menu
+async def start(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    await show_menu(chat_id, context)
 
 # Callback query handler to process button clicks
 async def button_handler(update: Update, context: CallbackContext):
@@ -90,12 +91,18 @@ async def button_handler(update: Update, context: CallbackContext):
         await restart_tunnel(update, context)
     elif query.data == "stop_tunnel":
         await stop_tunnel(update, context)
+    elif query.data == "exit":
+        await context.bot.send_message(chat_id=chat_id, text="👋 خداحافظ! ربات متوقف شد.")
+        return  # Do not show the menu again if exiting
     elif query.data.startswith("ban_"):
         ip = query.data.split("_")[1]
         await ban_ip(chat_id, ip, context)
     elif query.data.startswith("unban_"):
         ip = query.data.split("_")[1]
         await unban_ip(chat_id, ip, context)
+
+    # Show the menu again after every action
+    await show_menu(chat_id, context)
 
 # Function to display traffic statistics
 async def traffic_stats(update: Update, context: CallbackContext):
