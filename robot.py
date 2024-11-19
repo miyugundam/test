@@ -204,7 +204,7 @@ async def restart_tunnel(update: Update, context: CallbackContext):
     if response.get("error"):
         message = f"❌ خطا: {response['error']}"
     else:
-        message = "🔄 تانل با موفقیت ریست شد."
+        message = response.get("message", "🔄 تانل با موفقیت ریست شد.")
 
     await context.bot.send_message(chat_id=chat_id, text=message)
 
@@ -216,7 +216,7 @@ async def stop_tunnel(update: Update, context: CallbackContext):
     if response.get("error"):
         message = f"❌ خطا: {response['error']}"
     else:
-        message = "🛑 تانل با موفقیت متوقف شد."
+        message = response.get("message", "🛑 تانل با موفقیت متوقف شد.")
 
     await context.bot.send_message(chat_id=chat_id, text=message)
 
