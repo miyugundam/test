@@ -57,18 +57,17 @@ def make_api_request(endpoint, method="GET", data=None):
         # Log the status code and response text for debugging
         print(f"API call to {url} returned status {response.status_code}: {response.text}")
 
-        # Check if the response is JSON and return it
+        # If the response is not JSON, return the text directly
         if response.status_code == 200:
             try:
-                return response.json()
+                return response.json()  # Try parsing as JSON
             except json.JSONDecodeError:
-                return {"error": "Invalid JSON response from server"}
+                return {"message": response.text}  # Return plain text as a message
         else:
             return {"error": response.text}
 
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
-
 
 
 # Function to show the main menu
