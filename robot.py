@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
 from urllib.parse import urlparse
 
-# Function to load configuration and prompt for missing values
+# Function to load configuration and prompt for missing values only if necessary
 def load_config():
     config_path = "config.json"
     config = {}
@@ -20,7 +20,7 @@ def load_config():
             except json.JSONDecodeError:
                 print("Invalid JSON in config file. Recreating...")
 
-    # Prompt for missing values or invalid placeholders
+    # Check if the loaded config has valid values; if not, prompt the user
     if not config.get("telegram_bot_token") or config["telegram_bot_token"] == "YOUR_TELEGRAM_BOT_TOKEN":
         config["telegram_bot_token"] = input("Enter your Telegram Bot Token: ")
     if not config.get("api_base_url") or config["api_base_url"] == "http://localhost:8080":
@@ -28,7 +28,7 @@ def load_config():
     if not config.get("api_key") or config["api_key"] == "YOUR_API_KEY":
         config["api_key"] = input("Enter your API Key: ")
 
-    # Save the updated configuration
+    # Save the updated configuration back to the file
     with open(config_path, "w") as config_file:
         json.dump(config, config_file, indent=4)
 
