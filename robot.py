@@ -2,6 +2,8 @@
 import os
 import json
 import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
 
@@ -51,9 +53,22 @@ def make_api_request(endpoint, method="GET", data=None):
         else:
             # Adding a longer timeout of 30 seconds
             response = requests.get(url, headers=headers, timeout=30)
-        return response.json() if response.status_code == 200 else {"error": response.text}
+
+        # Log the status code and response text for debugging
+        print(f"API call to {url} returned status {response.status_code}: {response.text}")
+
+        # Check if the response is JSON and return it
+        if response.status_code == 200:
+            try:
+                return response.json()
+            except json.JSONDecodeError:
+                return {"error": "Invalid JSON response from server"}
+        else:
+            return {"error": response.text}
+
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
+
 
 
 # Function to show the main menu
@@ -185,17 +200,25 @@ async def tunnel_logs(update: Update, context: CallbackContext):
 # Function to restart the tunnel
 async def restart_tunnel(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    # Make the API request to restart the tcp_forwarder
     response = make_api_request("restart-tcp-forwarder", method="POST")
-    message = "🔄 تانل با موفقیت ریست شد." if "tcp_forwarder restarted." in response else f"❌ خطا: {response.get('error')}"
+
+    if response.get("error"):
+        message = f"❌ خطا: {response['error']}"
+    else:
+        message = "🔄 تانل با موفقیت ریست شد."
+
     await context.bot.send_message(chat_id=chat_id, text=message)
 
 # Function to stop the tunnel
 async def stop_tunnel(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    # Make the API request to stop the tcp_forwarder
     response = make_api_request("stop-tcp-forwarder", method="POST")
-    message = "🛑 تانل با موفقیت متوقف شد." if "tcp_forwarder stopped." in response else f"❌ خطا: {response.get('error')}"
+
+    if response.get("error"):
+        message = f"❌ خطا: {response['error']}"
+    else:
+        message = "🛑 تانل با موفقیت متوقف شد."
+
     await context.bot.send_message(chat_id=chat_id, text=message)
 
 
