@@ -75,7 +75,7 @@ async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     message = u"🤖 به ربات مانیتورینگ Azumi خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
     
-    # Girlish-style buttons
+    # Girlish-style buttons without "بازگشت به منو"
     keyboard = [
         [InlineKeyboardButton(u"📊 آمار ترافیک", callback_data="traffic_stats")],
         [InlineKeyboardButton(u"💻 وضعیت سیستم", callback_data="system_metrics")],
@@ -83,7 +83,6 @@ async def start(update: Update, context: CallbackContext):
         [InlineKeyboardButton(u"📝 مشاهده لاگ‌ها", callback_data="tunnel_logs")],
         [InlineKeyboardButton(u"🔄 ریست تانل", callback_data="restart_tunnel")],
         [InlineKeyboardButton(u"🛑 توقف تانل", callback_data="stop_tunnel")],
-        [InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")],
         [InlineKeyboardButton(u"🚪 خروج", callback_data="exit_bot")],
     ]
     
@@ -117,6 +116,7 @@ async def button_handler(update: Update, context: CallbackContext):
 async def traffic_stats(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("network-stats")
+    
     if "error" in data:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
@@ -130,12 +130,17 @@ async def traffic_stats(update: Update, context: CallbackContext):
             f"  🔹 بسته‌های ارسال‌شده: {stats['packets_sent']}\n"
             f"  🔹 بسته‌های دریافت‌شده: {stats['packets_received']}\n\n"
         )
-    await context.bot.send_message(chat_id=chat_id, text=message)
+    
+    # Add "بازگشت به منو" button
+    keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
 # Function to display system metrics
 async def system_metrics(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("metrics")
+    
     if "error" in data:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
@@ -146,7 +151,12 @@ async def system_metrics(update: Update, context: CallbackContext):
         f"🔹 استفاده از RAM: {data['ram_usage']}%\n"
         f"🔹 زمان روشن بودن سیستم: {data.get('uptime', 'نامشخص')}\n"
     )
-    await context.bot.send_message(chat_id=chat_id, text=message)
+    
+    # Add "بازگشت به منو" button
+    keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
 
 # Function to show connected public IPs with buttons to ban or unban
 async def connected_ips(update: Update, context: CallbackContext):
@@ -176,25 +186,40 @@ async def connected_ips(update: Update, context: CallbackContext):
 async def ban_ip(chat_id, ip, context):
     response = make_api_request("ban-ip", method="POST", data={"ip": ip})
     message = f"✅ IP {ip} مسدود شد." if "message" in response else f"❌ خطا: {response.get('error')}"
-    await context.bot.send_message(chat_id=chat_id, text=message)
+    
+    # Add "بازگشت به منو" button
+    keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
 # Function to handle unbanning an IP
 async def unban_ip(chat_id, ip, context):
     response = make_api_request("unban-ip", method="POST", data={"ip": ip})
     message = f"✅ IP {ip} رفع انسداد شد." if "message" in response else f"❌ خطا: {response.get('error')}"
-    await context.bot.send_message(chat_id=chat_id, text=message)
+    
+    # Add "بازگشت به منو" button
+    keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
 
 # Function to display tunnel logs
 async def tunnel_logs(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("api/tunnel-logs")
+    
     if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
-        return
+        message = f"❌ خطا: {data['error']}"
+    else:
+        logs = data.get("logs", "لاگی برای نمایش وجود ندارد.")
+        message = f"📝 لاگ‌های تانل:\n```\n{logs}\n```"
 
-    logs = data.get("logs", "لاگی برای نمایش وجود ندارد.")
-    message = f"📝 لاگ‌های تانل:\n```\n{logs}\n```"
-    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
+    # Add "بازگشت به منو" button
+    keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown", reply_markup=reply_markup)
+
 
 # Function to restart the tunnel
 async def restart_tunnel(update: Update, context: CallbackContext):
