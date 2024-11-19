@@ -206,6 +206,10 @@ async def restart_tunnel(update: Update, context: CallbackContext):
     else:
         message = response.get("message", "🔄 تانل با موفقیت ریست شد.")
 
+    # Replace the default message with a more stylish Persian message
+    if "tcp_forwarder restarted." in response.get("message", ""):
+        message = "🔄 تانل با موفقیت ریست شد."
+
     await context.bot.send_message(chat_id=chat_id, text=message)
 
 # Function to stop the tunnel
@@ -217,6 +221,10 @@ async def stop_tunnel(update: Update, context: CallbackContext):
         message = f"❌ خطا: {response['error']}"
     else:
         message = response.get("message", "🛑 تانل با موفقیت متوقف شد.")
+
+    # Replace the default message with a more stylish Persian message
+    if "tcp_forwarder stopped." in response.get("message", ""):
+        message = "🛑 تانل با موفقیت متوقف شد."
 
     await context.bot.send_message(chat_id=chat_id, text=message)
 
