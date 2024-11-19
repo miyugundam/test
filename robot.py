@@ -5,7 +5,6 @@ import json
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
-from urllib.parse import urlparse
 
 # Function to load configuration and prompt for missing values only if necessary
 def load_config():
@@ -55,22 +54,19 @@ def make_api_request(endpoint, method="GET", data=None):
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
 
-# Function to sanitize IP input
-def sanitize_ip(ip):
-    parsed_ip = urlparse(ip)
-    if parsed_ip.scheme or parsed_ip.netloc:
-        return None  # Return None if the IP contains invalid characters
-    return ip
-
 # Function to start the bot and show options
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    message = u"🤖 به ربات مانیتورینگ Azumi خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
+    message = u"💖 به ربات نظارتی Azumi خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
 
+    # Girlish-style buttons
     keyboard = [
-        [InlineKeyboardButton(u"📊 آمار ترافیک", callback_data="traffic_stats")],
+        [InlineKeyboardButton(u"🌸 آمار ترافیک", callback_data="traffic_stats")],
         [InlineKeyboardButton(u"💻 وضعیت سیستم", callback_data="system_metrics")],
-        [InlineKeyboardButton(u"🌐 مدیریت IP‌های عمومی", callback_data="public_ip_management")],
+        [InlineKeyboardButton(u"🌐 IP‌های متصل", callback_data="connected_ips")],
+        [InlineKeyboardButton(u"📝 مشاهده لاگ‌ها", callback_data="tunnel_logs")],
+        [InlineKeyboardButton(u"🔄 بازنشانی تونل", callback_data="restart_tunnel")],
+        [InlineKeyboardButton(u"🛑 توقف تونل", callback_data="stop_tunnel")],
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -86,8 +82,14 @@ async def button_handler(update: Update, context: CallbackContext):
         await traffic_stats(update, context)
     elif query.data == "system_metrics":
         await system_metrics(update, context)
-    elif query.data == "public_ip_management":
-        await public_ip_management(update, context)
+    elif query.data == "connected_ips":
+        await connected_ips(update, context)
+    elif query.data == "tunnel_logs":
+        await tunnel_logs(update, context)
+    elif query.data == "restart_tunnel":
+        await restart_tunnel(update, context)
+    elif query.data == "stop_tunnel":
+        await stop_tunnel(update, context)
 
 # Function to display traffic statistics
 async def traffic_stats(update: Update, context: CallbackContext):
@@ -97,7 +99,7 @@ async def traffic_stats(update: Update, context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text=u"❌ خطا: {data['error']}")
         return
 
-    message = u"📊 آمار ترافیک:\n"
+    message = u"🌸 آمار ترافیک:\n"
     for port, stats in data.items():
         message += (
             f"پورت {port}:\n"
@@ -124,42 +126,43 @@ async def system_metrics(update: Update, context: CallbackContext):
     )
     await context.bot.send_message(chat_id=chat_id, text=message)
 
-# Function to manage public IPs
-async def public_ip_management(update: Update, context: CallbackContext):
+# Function to show connected public IPs
+async def connected_ips(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("public-ip-settings")
     if "error" in data:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
 
-    keyboard = []
+    message = u"🌐 IP‌های متصل:\n"
     for ip, status in data["ip_status"].items():
-        button_text = f"{ip} - {'رفع مسدودیت' if status == 'banned' else 'مسدود کردن'}"
-        callback_data = f"{'unban_ip' if status == 'banned' else 'ban_ip'}|{ip}"
-        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        message += f"🔹 IP: {ip} - وضعیت: {'مسدود' if status == 'banned' else 'فعال'}\n"
+    await context.bot.send_message(chat_id=chat_id, text=message)
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=chat_id, text=u"🌐 مدیریت IP‌های عمومی:", reply_markup=reply_markup)
-
-# Function to handle ban and unban actions
-async def manage_ip(update: Update, context: CallbackContext):
-    query = update.callback_query
-    await query.answer()
-    action, ip = query.data.split("|")
-    chat_id = query.message.chat_id
-
-    sanitized_ip = sanitize_ip(ip)
-    if not sanitized_ip:
-        await context.bot.send_message(chat_id=chat_id, text="❌ خطا: آدرس IP نامعتبر است.")
+# Function to display tunnel logs
+async def tunnel_logs(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    data = make_api_request("api/tunnel-logs")
+    if "error" in data:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
 
-    if action == "ban_ip":
-        response = make_api_request("ban-ip", method="POST", data={"ip": sanitized_ip})
-        message = f"🚫 IP {sanitized_ip} با موفقیت مسدود شد." if response.get("status") == "banned" else f"❌ خطا: {response.get('error')}"
-    elif action == "unban_ip":
-        response = make_api_request("unban-ip", method="POST", data={"ip": sanitized_ip})
-        message = f"✅ IP {sanitized_ip} با موفقیت رفع مسدودیت شد." if response.get("status") == "unbanned" else f"❌ خطا: {response.get('error')}"
+    logs = data.get("logs", "لاگی برای نمایش وجود ندارد.")
+    message = f"📝 لاگ‌های تونل:\n```\n{logs}\n```"
+    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
 
+# Function to restart the tunnel
+async def restart_tunnel(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    response = make_api_request("restart-tunnel", method="POST")
+    message = "🔄 تونل با موفقیت بازنشانی شد." if response.get("status") == "restarted" else f"❌ خطا: {response.get('error')}"
+    await context.bot.send_message(chat_id=chat_id, text=message)
+
+# Function to stop the tunnel
+async def stop_tunnel(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    response = make_api_request("shutdown", method="POST")
+    message = "🛑 تونل با موفقیت متوقف شد." if response.get("status") == "stopped" else f"❌ خطا: {response.get('error')}"
     await context.bot.send_message(chat_id=chat_id, text=message)
 
 # Main function to start the bot
@@ -170,7 +173,6 @@ def main():
     # Register command and callback query handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(CallbackQueryHandler(manage_ip, pattern="^(ban_ip|unban_ip)\\|"))
 
     # Run the bot until it is stopped
     print("Azumi Monitoring Bot started. Press Ctrl+C to stop.")
