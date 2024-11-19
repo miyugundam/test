@@ -1,43 +1,78 @@
 # -*- coding: utf-8 -*-
 
 import os
+import json
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
+from urllib.parse import urlparse
 
-# Function to get user input for configuration
-def get_user_input(prompt, default_value=None):
-    user_input = input(f"{prompt} (Press Enter to use '{default_value}'): ")
-    return user_input if user_input else default_value
+# Function to load configuration and prompt for missing values
+def load_config():
+    config_path = "config.json"
+    if os.path.exists(config_path):
+        with open(config_path, "r") as config_file:
+            config = json.load(config_file)
+    else:
+        config = {}
 
-# Prompt user for inputs
-TELEGRAM_BOT_TOKEN = get_user_input("Enter your Telegram Bot Token", "YOUR_TELEGRAM_BOT_TOKEN")
-API_BASE_URL = get_user_input("Enter your API Base URL", "http://localhost:8080")
-API_KEY = get_user_input("Enter your API Key", "YOUR_API_KEY")
+    # Prompt for missing values
+    if "telegram_bot_token" not in config:
+        config["telegram_bot_token"] = input("Enter your Telegram Bot Token: ")
+    if "api_base_url" not in config:
+        config["api_base_url"] = input("Enter your API Base URL (e.g., http://localhost:8080): ")
+    if "api_key" not in config:
+        config["api_key"] = input("Enter your API Key: ")
+
+    # Save the updated configuration
+    with open(config_path, "w") as config_file:
+        json.dump(config, config_file, indent=4)
+
+    return config
+
+# Load the configuration
+config = load_config()
+
+# Extract configuration details
+TELEGRAM_BOT_TOKEN = config.get("telegram_bot_token")
+API_BASE_URL = config.get("api_base_url")
+API_KEY = config.get("api_key")
 
 # Helper function to make an authenticated API request
-def make_api_request(endpoint):
-    headers = {"Authorization": f"Bearer {API_KEY}"}
-    response = requests.get(f"{API_BASE_URL}/{endpoint}", headers=headers)
-    return response.json() if response.status_code == 200 else {"error": response.text}
+def make_api_request(endpoint, method="GET", data=None):
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+    url = f"{API_BASE_URL}/{endpoint}"
+    try:
+        if method == "POST":
+            response = requests.post(url, headers=headers, json=data, timeout=10)
+        else:
+            response = requests.get(url, headers=headers, timeout=10)
+        return response.json() if response.status_code == 200 else {"error": response.text}
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
+
+# Function to sanitize IP input
+def sanitize_ip(ip):
+    parsed_ip = urlparse(ip)
+    if parsed_ip.scheme or parsed_ip.netloc:
+        return None  # Return None if the IP contains invalid characters
+    return ip
 
 # Function to start the bot and show options
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    message = u"👋 به ربات مانیتورینگ خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
+    message = u"🤖 به ربات مانیتورینگ Azumi خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
 
     keyboard = [
         [InlineKeyboardButton(u"📊 آمار ترافیک", callback_data="traffic_stats")],
         [InlineKeyboardButton(u"💻 وضعیت سیستم", callback_data="system_metrics")],
-        [InlineKeyboardButton(u"🌐 مدیریت IP‌های عمومی", callback_data="manage_ips")],
-        [InlineKeyboardButton(u"🔄 بازنشانی تونل", callback_data="reset_tunnel")],
-        [InlineKeyboardButton(u"🛑 توقف تونل", callback_data="stop_tunnel")],
+        [InlineKeyboardButton(u"🌐 مدیریت IP‌های عمومی", callback_data="public_ip_management")],
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
-# Function to handle button clicks
+# Callback query handler to process button clicks
 async def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
@@ -47,19 +82,15 @@ async def button_handler(update: Update, context: CallbackContext):
         await traffic_stats(update, context)
     elif query.data == "system_metrics":
         await system_metrics(update, context)
-    elif query.data == "manage_ips":
-        await manage_ips(update, context)
-    elif query.data == "reset_tunnel":
-        await reset_tunnel(update, context)
-    elif query.data == "stop_tunnel":
-        await stop_tunnel(update, context)
+    elif query.data == "public_ip_management":
+        await public_ip_management(update, context)
 
 # Function to display traffic statistics
 async def traffic_stats(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("network-stats")
     if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
+        await context.bot.send_message(chat_id=chat_id, text=u"❌ خطا: {data['error']}")
         return
 
     message = u"📊 آمار ترافیک:\n"
@@ -78,7 +109,7 @@ async def system_metrics(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("metrics")
     if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
+        await context.bot.send_message(chat_id=chat_id, text=u"❌ خطا: {data['error']}")
         return
 
     message = (
@@ -89,61 +120,43 @@ async def system_metrics(update: Update, context: CallbackContext):
     )
     await context.bot.send_message(chat_id=chat_id, text=message)
 
-# Function to display connected and banned IPs
-async def manage_ips(update: Update, context: CallbackContext):
+# Function to manage public IPs
+async def public_ip_management(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("public-ip-settings")
     if "error" in data:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
 
-    message = u"🌐 IP‌های متصل:\n"
     keyboard = []
-
-    # Show connected IPs with options to ban or unban
-    for ip, status in data.get("ip_status", {}).items():
-        status_text = "✅ متصل" if status == "unbanned" else "🚫 مسدود"
-        button_text = f"{ip} - {status_text}"
-        callback_data = f"ban_{ip}" if status == "unbanned" else f"unban_{ip}"
+    for ip, status in data["ip_status"].items():
+        button_text = f"{ip} - {'رفع مسدودیت' if status == 'banned' else 'مسدود کردن'}"
+        callback_data = f"{'unban_ip' if status == 'banned' else 'ban_ip'}|{ip}"
         keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+    await context.bot.send_message(chat_id=chat_id, text=u"🌐 مدیریت IP‌های عمومی:", reply_markup=reply_markup)
 
-# Function to handle banning and unbanning IPs
-async def ban_unban_ip(update: Update, context: CallbackContext):
+# Function to handle ban and unban actions
+async def manage_ip(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
+    action, ip = query.data.split("|")
     chat_id = query.message.chat_id
-    action, ip = query.data.split("_")
 
-    if action == "ban":
-        response = requests.post(f"{API_BASE_URL}/ban-ip", json={"ip": ip})
-        if response.status_code == 200:
-            await context.bot.send_message(chat_id=chat_id, text=f"🚫 IP {ip} با موفقیت مسدود شد.")
-        else:
-            await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا در مسدود کردن IP: {response.text}")
-    elif action == "unban":
-        response = requests.post(f"{API_BASE_URL}/unban-ip", json={"ip": ip})
-        if response.status_code == 200:
-            await context.bot.send_message(chat_id=chat_id, text=f"✅ IP {ip} با موفقیت رفع مسدودیت شد.")
-        else:
-            await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا در رفع مسدودیت IP: {response.text}")
+    sanitized_ip = sanitize_ip(ip)
+    if not sanitized_ip:
+        await context.bot.send_message(chat_id=chat_id, text="❌ خطا: آدرس IP نامعتبر است.")
+        return
 
-# Function to reset the tunnel
-async def reset_tunnel(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    await context.bot.send_message(chat_id=chat_id, text=u"🔄 در حال بازنشانی تونل...")
-    await context.bot.send_message(chat_id=chat_id, text=u"✅ تونل با موفقیت بازنشانی شد.")
+    if action == "ban_ip":
+        response = make_api_request("ban-ip", method="POST", data={"ip": sanitized_ip})
+        message = f"🚫 IP {sanitized_ip} با موفقیت مسدود شد." if response.get("status") == "banned" else f"❌ خطا: {response.get('error')}"
+    elif action == "unban_ip":
+        response = make_api_request("unban-ip", method="POST", data={"ip": sanitized_ip})
+        message = f"✅ IP {sanitized_ip} با موفقیت رفع مسدودیت شد." if response.get("status") == "unbanned" else f"❌ خطا: {response.get('error')}"
 
-# Function to stop the tunnel
-async def stop_tunnel(update: Update, context: CallbackContext):
-    chat_id = update.effective_chat.id
-    response = requests.post(f"{API_BASE_URL}/shutdown")
-    if response.status_code == 200:
-        await context.bot.send_message(chat_id=chat_id, text=u"🛑 تونل با موفقیت متوقف شد.")
-    else:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا در توقف تونل: {response.text}")
+    await context.bot.send_message(chat_id=chat_id, text=message)
 
 # Main function to start the bot
 def main():
@@ -153,10 +166,10 @@ def main():
     # Register command and callback query handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(CallbackQueryHandler(ban_unban_ip))
+    application.add_handler(CallbackQueryHandler(manage_ip, pattern="^(ban_ip|unban_ip)\\|"))
 
     # Run the bot until it is stopped
-    print("Bot started. Press Ctrl+C to stop.")
+    print("Azumi Monitoring Bot started. Press Ctrl+C to stop.")
     application.run_polling()
 
 if __name__ == "__main__":
