@@ -100,7 +100,7 @@ async def manage_ips(update: Update, context: CallbackContext):
     message = u"🌐 IP‌های متصل:\n"
     keyboard = []
 
-    # Show connected IPs
+    # Show connected IPs with options to ban or unban
     for ip, status in data.get("ip_status", {}).items():
         status_text = "✅ متصل" if status == "unbanned" else "🚫 مسدود"
         button_text = f"{ip} - {status_text}"
