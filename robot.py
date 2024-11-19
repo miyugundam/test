@@ -8,9 +8,6 @@ from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQ
 from urllib.parse import urlparse
 
 # Function to load configuration and prompt for missing values
-import os
-import json
-
 def load_config():
     config_path = "config.json"
     config = {}
@@ -36,7 +33,6 @@ def load_config():
         json.dump(config, config_file, indent=4)
 
     return config
-
 
 # Load the configuration
 config = load_config()
