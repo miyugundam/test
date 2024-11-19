@@ -29,8 +29,7 @@ async def start(update: Update, context: CallbackContext):
     keyboard = [
         [InlineKeyboardButton(u"📊 آمار ترافیک", callback_data="traffic_stats")],
         [InlineKeyboardButton(u"💻 وضعیت سیستم", callback_data="system_metrics")],
-        [InlineKeyboardButton(u"🚫 مسدود کردن IP", callback_data="ban_ip")],
-        [InlineKeyboardButton(u"✅ رفع مسدودیت IP", callback_data="unban_ip")],
+        [InlineKeyboardButton(u"🌐 مدیریت IP‌های عمومی", callback_data="manage_ips")],
         [InlineKeyboardButton(u"🔄 بازنشانی تونل", callback_data="reset_tunnel")],
         [InlineKeyboardButton(u"🛑 توقف تونل", callback_data="stop_tunnel")],
     ]
@@ -38,7 +37,7 @@ async def start(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
-# Callback query handler to process button clicks
+# Function to handle button clicks
 async def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
@@ -48,10 +47,8 @@ async def button_handler(update: Update, context: CallbackContext):
         await traffic_stats(update, context)
     elif query.data == "system_metrics":
         await system_metrics(update, context)
-    elif query.data == "ban_ip":
-        await context.bot.send_message(chat_id=chat_id, text=u"لطفاً آدرس IP که می‌خواهید مسدود کنید را وارد کنید:")
-    elif query.data == "unban_ip":
-        await context.bot.send_message(chat_id=chat_id, text=u"لطفاً آدرس IP که می‌خواهید رفع مسدودیت کنید را وارد کنید:")
+    elif query.data == "manage_ips":
+        await manage_ips(update, context)
     elif query.data == "reset_tunnel":
         await reset_tunnel(update, context)
     elif query.data == "stop_tunnel":
@@ -62,7 +59,7 @@ async def traffic_stats(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("network-stats")
     if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=u"❌ خطا: {data['error']}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
 
     message = u"📊 آمار ترافیک:\n"
@@ -81,7 +78,7 @@ async def system_metrics(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = make_api_request("metrics")
     if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=u"❌ خطا: {data['error']}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
         return
 
     message = (
@@ -92,29 +89,46 @@ async def system_metrics(update: Update, context: CallbackContext):
     )
     await context.bot.send_message(chat_id=chat_id, text=message)
 
-# Function to ban an IP address
-async def ban_ip(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
-    ip = update.message.text.strip()  # Ensure there are no extra spaces around the IP
-    try:
+# Function to display connected and banned IPs
+async def manage_ips(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    data = make_api_request("public-ip-settings")
+    if "error" in data:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
+        return
+
+    message = u"🌐 IP‌های متصل:\n"
+    keyboard = []
+
+    # Show connected IPs
+    for ip, status in data.get("ip_status", {}).items():
+        status_text = "✅ متصل" if status == "unbanned" else "🚫 مسدود"
+        button_text = f"{ip} - {status_text}"
+        callback_data = f"ban_{ip}" if status == "unbanned" else f"unban_{ip}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
+# Function to handle banning and unbanning IPs
+async def ban_unban_ip(update: Update, context: CallbackContext):
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat_id
+    action, ip = query.data.split("_")
+
+    if action == "ban":
         response = requests.post(f"{API_BASE_URL}/ban-ip", json={"ip": ip})
         if response.status_code == 200:
             await context.bot.send_message(chat_id=chat_id, text=f"🚫 IP {ip} با موفقیت مسدود شد.")
         else:
             await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا در مسدود کردن IP: {response.text}")
-    except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {str(e)}")
-
-
-# Function to unban an IP address
-async def unban_ip(update: Update, context: CallbackContext):
-    chat_id = update.message.chat_id
-    ip = update.message.text
-    response = requests.post(f"{API_BASE_URL}/unban-ip", json={"ip": ip})
-    if response.status_code == 200:
-        await context.bot.send_message(chat_id=chat_id, text=f"✅ IP {ip} با موفقیت رفع مسدودیت شد.")
-    else:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا در رفع مسدودیت IP: {response.text}")
+    elif action == "unban":
+        response = requests.post(f"{API_BASE_URL}/unban-ip", json={"ip": ip})
+        if response.status_code == 200:
+            await context.bot.send_message(chat_id=chat_id, text=f"✅ IP {ip} با موفقیت رفع مسدودیت شد.")
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا در رفع مسدودیت IP: {response.text}")
 
 # Function to reset the tunnel
 async def reset_tunnel(update: Update, context: CallbackContext):
@@ -139,8 +153,7 @@ def main():
     # Register command and callback query handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
-    application.add_handler(CommandHandler("ban_ip", ban_ip))
-    application.add_handler(CommandHandler("unban_ip", unban_ip))
+    application.add_handler(CallbackQueryHandler(ban_unban_ip))
 
     # Run the bot until it is stopped
     print("Bot started. Press Ctrl+C to stop.")
