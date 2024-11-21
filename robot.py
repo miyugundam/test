@@ -7,20 +7,16 @@ from requests.packages.urllib3.util.retry import Retry
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackContext, CallbackQueryHandler
 
-# Function to load configuration and prompt for missing values only if necessary
 def load_config():
     config_path = "config.json"
     config = {}
-
-    # Load the existing config if available
     if os.path.exists(config_path):
         with open(config_path, "r") as config_file:
             try:
                 config = json.load(config_file)
             except json.JSONDecodeError:
-                print("Invalid JSON in config file. Recreating...")
+                print("JSON is invalid. Recreating...")
 
-    # Check if the loaded config has valid values; if not, prompt the user
     if not config.get("telegram_bot_token") or config["telegram_bot_token"] == "YOUR_TELEGRAM_BOT_TOKEN":
         config["telegram_bot_token"] = input("Enter your Telegram Bot Token: ")
     if not config.get("api_base_url") or config["api_base_url"] == "http://localhost:8080":
@@ -28,41 +24,33 @@ def load_config():
     if not config.get("api_key") or config["api_key"] == "YOUR_API_KEY":
         config["api_key"] = input("Enter your API Key: ")
 
-    # Save the updated configuration back to the file
     with open(config_path, "w") as config_file:
         json.dump(config, config_file, indent=4)
 
     return config
 
-# Load the configuration
 config = load_config()
 
-# Extract configuration details
 TELEGRAM_BOT_TOKEN = config.get("telegram_bot_token")
 API_BASE_URL = config.get("api_base_url")
 API_KEY = config.get("api_key")
 
-# Helper function to make an authenticated API request
-def make_api_request(endpoint, method="GET", data=None):
+def api_request(endpoint, method="GET", data=None):
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     url = f"{API_BASE_URL}/{endpoint}"
     try:
         if method == "POST":
-            # Adding a longer timeout of 30 seconds
             response = requests.post(url, headers=headers, json=data, timeout=30)
         else:
-            # Adding a longer timeout of 30 seconds
             response = requests.get(url, headers=headers, timeout=30)
 
-        # Log the status code and response text for debugging
         print(f"API call to {url} returned status {response.status_code}: {response.text}")
 
-        # If the response is not JSON, return the text directly
         if response.status_code == 200:
             try:
-                return response.json()  # Try parsing as JSON
+                return response.json()  
             except json.JSONDecodeError:
-                return {"message": response.text}  # Return plain text as a message
+                return {"message": response.text} 
         else:
             return {"error": response.text}
 
@@ -70,22 +58,21 @@ def make_api_request(endpoint, method="GET", data=None):
         return {"error": str(e)}
 
 
-# Function to show the main menu
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     message = u"🤖 به ربات مانیتورینگ Azumi خوش آمدید! لطفاً یکی از گزینه‌های زیر را انتخاب کنید:"
-    
-    # Girlish-style buttons without "بازگشت به منو"
+
     keyboard = [
         [InlineKeyboardButton(u"📊 آمار ترافیک", callback_data="traffic_stats")],
         [InlineKeyboardButton(u"💻 وضعیت سیستم", callback_data="system_metrics")],
         [InlineKeyboardButton(u"🌐 ایپی‌های متصل", callback_data="connected_ips")],
         [InlineKeyboardButton(u"📝 مشاهده لاگ‌ها", callback_data="tunnel_logs")],
-        [InlineKeyboardButton(u"🔄 ریست تانل", callback_data="restart_tunnel")],
-        [InlineKeyboardButton(u"🛑 توقف تانل", callback_data="stop_tunnel")],
+        [InlineKeyboardButton(u"🔄 ریست فورواردرها", callback_data="restart_tunnel")],
+        [InlineKeyboardButton(u"🛑 توقف فورواردرها", callback_data="stop_tunnel")],
+        [InlineKeyboardButton(u"🔍 وضعیت فورواردرها", callback_data="tunnel_status")],  # گزینه جدید
         [InlineKeyboardButton(u"🚪 خروج", callback_data="exit_bot")],
     ]
-    
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
@@ -106,16 +93,16 @@ async def button_handler(update: Update, context: CallbackContext):
         await restart_tunnel(update, context)
     elif query.data == "stop_tunnel":
         await stop_tunnel(update, context)
+    elif query.data == "tunnel_status":
+        await fetch_forwarder_status(update, context)  
     elif query.data == "show_menu":
         await start(update, context)
     elif query.data == "exit_bot":
-        await context.bot.send_message(chat_id=chat_id, text="👋 ربات بسته شد.")
+        await context.bot.send_message(chat_id=chat_id, text="👋 بای بای")
 
-
-# Function to display traffic statistics
 async def traffic_stats(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    data = make_api_request("network-stats")
+    data = api_request("network-stats")
     
     if "error" in data:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
@@ -131,15 +118,13 @@ async def traffic_stats(update: Update, context: CallbackContext):
             f"  🔹 بسته‌های دریافت‌شده: {stats['packets_received']}\n\n"
         )
     
-    # Add "بازگشت به منو" button
     keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
-# Function to display system metrics
 async def system_metrics(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    data = make_api_request("metrics")
+    data = api_request("metrics")
     
     if "error" in data:
         await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
@@ -152,18 +137,20 @@ async def system_metrics(update: Update, context: CallbackContext):
         f"🔹 زمان روشن بودن سیستم: {data.get('uptime', 'نامشخص')}\n"
     )
     
-    # Add "بازگشت به منو" button
     keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
 
-# Function to show connected public IPs with buttons to ban or unban
 async def connected_ips(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    data = make_api_request("public-ip-settings")
+    data = api_request("public-ip-settings")
+
     if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ خطا: {data['error']}")
+        message = f"❌ خطا: {data['error']}"
+        keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
         return
 
     message = u"🌐 ایپی‌های متصل:\n"
@@ -173,40 +160,35 @@ async def connected_ips(update: Update, context: CallbackContext):
         status_text = "🔴 مسدود" if status == "banned" else "🟢 فعال"
         message += f"<b>IP: {ip}</b> - وضعیت: {status_text}\n"
 
-        # Add buttons for each IP
         if status == "banned":
             keyboard.append([InlineKeyboardButton(f"🚫 رفع انسداد {ip}", callback_data=f"unban_{ip}")])
         else:
             keyboard.append([InlineKeyboardButton(f"🔒 مسدود کردن {ip}", callback_data=f"ban_{ip}")])
 
+    keyboard.append([InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")])
     reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="HTML")
 
-# Function to handle banning an IP
 async def ban_ip(chat_id, ip, context):
-    response = make_api_request("ban-ip", method="POST", data={"ip": ip})
+    response = api_request("ban-ip", method="POST", data={"ip": ip})
     message = f"✅ IP {ip} مسدود شد." if "message" in response else f"❌ خطا: {response.get('error')}"
     
-    # Add "بازگشت به منو" button
     keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
-# Function to handle unbanning an IP
 async def unban_ip(chat_id, ip, context):
-    response = make_api_request("unban-ip", method="POST", data={"ip": ip})
+    response = api_request("unban-ip", method="POST", data={"ip": ip})
     message = f"✅ IP {ip} رفع انسداد شد." if "message" in response else f"❌ خطا: {response.get('error')}"
     
-    # Add "بازگشت به منو" button
     keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
-
-# Function to display tunnel logs
 async def tunnel_logs(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    data = make_api_request("api/tunnel-logs")
+    data = api_request("api/tunnel-logs")
     
     if "error" in data:
         message = f"❌ خطا: {data['error']}"
@@ -214,58 +196,84 @@ async def tunnel_logs(update: Update, context: CallbackContext):
         logs = data.get("logs", "لاگی برای نمایش وجود ندارد.")
         message = f"📝 لاگ‌های تانل:\n```\n{logs}\n```"
 
-    # Add "بازگشت به منو" button
     keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown", reply_markup=reply_markup)
 
-
-# Function to restart the tunnel
 async def restart_tunnel(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    response = make_api_request("restart-tcp-forwarder", method="POST")
 
-    if response.get("error"):
-        message = f"❌ خطا: {response['error']}"
-    else:
-        message = response.get("message", "🔄 تانل با موفقیت ریست شد.")
+    tcp_response = api_request("restart-tcp-forwarder", method="POST")
+    udp_response = api_request("restart-udp-forwarder", method="POST")
 
-    # Replace the default message with a more stylish Persian message
-    if "tcp_forwarder restarted." in response.get("message", ""):
-        message = "🔄 تانل با موفقیت ریست شد."
+    tcp_message = (
+        "✅ فورواردر TCP با موفقیت ریست شد."
+        if "message" in tcp_response
+        else f"❌ خطا در ریست فورواردر TCP: {tcp_response.get('error')}"
+    )
 
+    udp_message = (
+        "✅ فورواردر UDP با موفقیت ریست شد."
+        if "message" in udp_response
+        else f"❌ خطا در ریست فورواردر UDP: {udp_response.get('error')}"
+    )
+
+    message = f"{tcp_message}\n{udp_message}"
     await context.bot.send_message(chat_id=chat_id, text=message)
 
-# Function to stop the tunnel
 async def stop_tunnel(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    response = make_api_request("stop-tcp-forwarder", method="POST")
 
-    if response.get("error"):
-        message = f"❌ خطا: {response['error']}"
-    else:
-        message = response.get("message", "🛑 تانل با موفقیت متوقف شد.")
+    tcp_response = api_request("stop-tcp-forwarder", method="POST")
+    udp_response = api_request("stop-udp-forwarder", method="POST")
 
-    # Replace the default message with a more stylish Persian message
-    if "tcp_forwarder stopped." in response.get("message", ""):
-        message = "🛑 تانل با موفقیت متوقف شد."
+    tcp_message = (
+        "✅ فورواردر TCP با موفقیت متوقف شد."
+        if "message" in tcp_response
+        else f"❌ خطا در متوقف کردن فورواردر TCP: {tcp_response.get('error')}"
+    )
 
+    udp_message = (
+        "✅ فورواردر UDP با موفقیت متوقف شد."
+        if "message" in udp_response
+        else f"❌ خطا در متوقف کردن فورواردر UDP: {udp_response.get('error')}"
+    )
+
+    message = f"{tcp_message}\n{udp_message}"
     await context.bot.send_message(chat_id=chat_id, text=message)
 
+async def fetch_forwarder_status(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    response = api_request("tunnel-status")
 
-# Main function to start the bot
+    if "error" in response:
+        message = f"❌ خطا در دریافت وضعیت فورواردرها: {response['error']}"
+    else:
+        tcp_status = response.get("tcp_forwarder", "Inactive")
+        udp_status = response.get("udp_forwarder", "Inactive")
+
+        tcp_status_text = "🟢 فعال" if tcp_status == "Active" else "🔴 غیرفعال"
+        udp_status_text = "🟢 فعال" if udp_status == "Active" else "🔴 غیرفعال"
+
+        message = (
+            f"🔍 وضعیت فورواردرها:\n"
+            f"  🔹 فورواردر TCP: {tcp_status_text}\n"
+            f"  🔹 فورواردر UDP: {udp_status_text}\n"
+        )
+
+    keyboard = [[InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
 def main():
-    # Create an Application instance using your bot token
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Register command and callback query handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    # Run the bot until it is stopped
     print("Azumi Monitoring Bot started. Press Ctrl+C to stop.")
     application.run_polling()
 
-if __name__ == "__main__":
-    main()
+main()
