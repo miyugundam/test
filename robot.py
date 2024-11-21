@@ -67,9 +67,9 @@ async def start(update: Update, context: CallbackContext):
         [InlineKeyboardButton(u"💻 وضعیت سیستم", callback_data="system_metrics")],
         [InlineKeyboardButton(u"🌐 ایپی‌های متصل", callback_data="connected_ips")],
         [InlineKeyboardButton(u"📝 مشاهده لاگ‌ها", callback_data="tunnel_logs")],
-        [InlineKeyboardButton(u"🔄 ریست فورواردرها", callback_data="restart_tunnel")],
-        [InlineKeyboardButton(u"🛑 توقف فورواردرها", callback_data="stop_tunnel")],
-        [InlineKeyboardButton(u"🔍 وضعیت فورواردرها", callback_data="tunnel_status")],  # گزینه جدید
+        [InlineKeyboardButton(u"🔍 وضعیت فورواردرها", callback_data="tunnel_status")],
+        [InlineKeyboardButton(u"⚙️ تنظیمات TCP", callback_data="tcp_menu")],
+        [InlineKeyboardButton(u"⚙️ تنظیمات UDP", callback_data="udp_menu")],
         [InlineKeyboardButton(u"🚪 خروج", callback_data="exit_bot")],
     ]
 
@@ -89,16 +89,51 @@ async def button_handler(update: Update, context: CallbackContext):
         await connected_ips(update, context)
     elif query.data == "tunnel_logs":
         await tunnel_logs(update, context)
-    elif query.data == "restart_tunnel":
-        await restart_tunnel(update, context)
-    elif query.data == "stop_tunnel":
-        await stop_tunnel(update, context)
+    elif query.data == "tcp_menu":
+        await tcp_menu(update, context)
+    elif query.data == "udp_menu":
+        await udp_menu(update, context)
+    elif query.data == "restart_tcp":
+        await restart_tcp(update, context)
+    elif query.data == "restart_udp":
+        await restart_udp(update, context)
+    elif query.data == "stop_tcp":
+        await stop_tcp(update, context)
+    elif query.data == "stop_udp":
+        await stop_udp(update, context)
     elif query.data == "tunnel_status":
-        await fetch_forwarder_status(update, context)  
+        await fetch_forwarder_status(update, context)
     elif query.data == "show_menu":
         await start(update, context)
     elif query.data == "exit_bot":
         await context.bot.send_message(chat_id=chat_id, text="👋 بای بای")
+
+async def tcp_menu(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    message = u"⚙️ تنظیمات TCP:"
+
+    keyboard = [
+        [InlineKeyboardButton(u"🔄 ریست TCP", callback_data="restart_tcp")],
+        [InlineKeyboardButton(u"🛑 توقف TCP", callback_data="stop_tcp")],
+        [InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
+async def udp_menu(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    message = u"⚙️ تنظیمات UDP:"
+
+    keyboard = [
+        [InlineKeyboardButton(u"🔄 ریست UDP", callback_data="restart_udp")],
+        [InlineKeyboardButton(u"🛑 توقف UDP", callback_data="stop_udp")],
+        [InlineKeyboardButton(u"🔙 بازگشت به منو", callback_data="show_menu")],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
 
 async def traffic_stats(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
@@ -201,46 +236,50 @@ async def tunnel_logs(update: Update, context: CallbackContext):
     
     await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown", reply_markup=reply_markup)
 
-async def restart_tunnel(update: Update, context: CallbackContext):
+async def restart_tcp(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    response = api_request("restart-tcp-forwarder", method="POST")
 
-    tcp_response = api_request("restart-tcp-forwarder", method="POST")
-    udp_response = api_request("restart-udp-forwarder", method="POST")
-
-    tcp_message = (
+    message = (
         "✅ فورواردر TCP با موفقیت ریست شد."
-        if "message" in tcp_response
-        else f"❌ خطا در ریست فورواردر TCP: {tcp_response.get('error')}"
+        if "message" in response
+        else f"❌ خطا در ریست فورواردر TCP: {response.get('error')}"
     )
-
-    udp_message = (
-        "✅ فورواردر UDP با موفقیت ریست شد."
-        if "message" in udp_response
-        else f"❌ خطا در ریست فورواردر UDP: {udp_response.get('error')}"
-    )
-
-    message = f"{tcp_message}\n{udp_message}"
     await context.bot.send_message(chat_id=chat_id, text=message)
 
-async def stop_tunnel(update: Update, context: CallbackContext):
+async def restart_udp(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
+    response = api_request("restart-udp-forwarder", method="POST")
 
-    tcp_response = api_request("stop-tcp-forwarder", method="POST")
-    udp_response = api_request("stop-udp-forwarder", method="POST")
+    message = (
+        "✅ فورواردر UDP با موفقیت ریست شد."
+        if "message" in response
+        else f"❌ خطا در ریست فورواردر UDP: {response.get('error')}"
+    )
+    await context.bot.send_message(chat_id=chat_id, text=message)
 
-    tcp_message = (
+
+async def stop_tcp(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    response = api_request("stop-tcp-forwarder", method="POST")
+
+    message = (
         "✅ فورواردر TCP با موفقیت متوقف شد."
-        if "message" in tcp_response
-        else f"❌ خطا در متوقف کردن فورواردر TCP: {tcp_response.get('error')}"
+        if "message" in response
+        else f"❌ خطا در متوقف کردن فورواردر TCP: {response.get('error')}"
     )
+    await context.bot.send_message(chat_id=chat_id, text=message)
 
-    udp_message = (
+
+async def stop_udp(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    response = api_request("stop-udp-forwarder", method="POST")
+
+    message = (
         "✅ فورواردر UDP با موفقیت متوقف شد."
-        if "message" in udp_response
-        else f"❌ خطا در متوقف کردن فورواردر UDP: {udp_response.get('error')}"
+        if "message" in response
+        else f"❌ خطا در متوقف کردن فورواردر UDP: {response.get('error')}"
     )
-
-    message = f"{tcp_message}\n{udp_message}"
     await context.bot.send_message(chat_id=chat_id, text=message)
 
 async def fetch_forwarder_status(update: Update, context: CallbackContext):
