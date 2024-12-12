@@ -949,36 +949,34 @@ def main():
 
     # Conversation Handler for Create Peer
     peer_conversation = ConversationHandler(
-    entry_points=[CallbackQueryHandler(create_peer, pattern="create_peer")],
-    states={
-        SELECT_INTERFACE: [CallbackQueryHandler(collect_peer_name, pattern="select_interface_.*")],
-        PEER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, validate_peer_name)],
-        PEER_IP: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_peer_ip)],
-        DATA_LIMIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_data_limit)],
-        EXPIRY: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_expiry)],
-        CONFIG_FILE: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_config_file)],
-        DNS: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_dns)],
-        CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_peer)],
-    },
-    fallbacks=[CallbackQueryHandler(peers_menu, pattern="peers_menu")],
-    allow_reentry=True,
-)
+        entry_points=[CallbackQueryHandler(create_peer, pattern="create_peer")],
+        states={
+            SELECT_INTERFACE: [CallbackQueryHandler(collect_peer_name, pattern="select_interface_.*")],
+            PEER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, validate_peer_name)],
+            PEER_IP: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_peer_ip)],
+            DATA_LIMIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_data_limit)],
+            EXPIRY: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_expiry)],
+            CONFIG_FILE: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_config_file)],
+            DNS: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_dns)],
+            CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_peer)],
+        },
+        fallbacks=[CallbackQueryHandler(peers_menu, pattern="peers_menu")],
+        allow_reentry=True,
+    )
 
-
-
-     # Conversation Handler for Edit Peer
+    # Conversation Handler for Edit Peer
     edit_peer_conversation = ConversationHandler(
-    entry_points=[CallbackQueryHandler(edit_peer, pattern="edit_peer")],
-    states={
-        SELECT_INTERFACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_interface_for_edit)],
-        SELECT_PEER: [MessageHandler(filters.TEXT & ~filters.COMMAND, fetch_peer_details)],
-        SELECT_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_field)],
-        UPDATE_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_field)],
-        CONFIRM_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_edit)],
-    },
-    fallbacks=[CallbackQueryHandler(peers_menu, pattern="peers_menu")],
-    allow_reentry=True,
-)
+        entry_points=[CallbackQueryHandler(edit_peer, pattern="edit_peer")],
+        states={
+            SELECT_INTERFACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_interface_for_edit)],
+            SELECT_PEER: [MessageHandler(filters.TEXT & ~filters.COMMAND, fetch_peer_details)],
+            SELECT_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_field)],
+            UPDATE_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_field)],
+            CONFIRM_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_edit)],
+        },
+        fallbacks=[CallbackQueryHandler(peers_menu, pattern="peers_menu")],
+        allow_reentry=True,
+    )
 
     # Conversation Handler for Peer Status
     peer_status_conversation = ConversationHandler(
@@ -988,6 +986,8 @@ def main():
         },
         fallbacks=[CallbackQueryHandler(peers_menu, pattern="peers_menu")],
     )
+
+    # Conversation Handler for Block/Unblock Peer
     block_unblock_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(block_unblock_peer, pattern="block_unblock_peer")],
         states={
@@ -998,8 +998,6 @@ def main():
         fallbacks=[CallbackQueryHandler(peers_menu, pattern="peers_menu")],
         allow_reentry=True,
     )
-
-
 
     # Register Handlers
     application.add_handler(CommandHandler("start", start))
@@ -1012,13 +1010,8 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_back, pattern="main_menu"))
     register_backup_handlers(application)
 
-
-
-
     print("Bot is running...")
     application.run_polling()
-
-
 
 if __name__ == "__main__":
     main()
