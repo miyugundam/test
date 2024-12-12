@@ -306,70 +306,14 @@ def convert_to_bytes(limit):
         print(f"Error converting limit to bytes: {e}")
         return 0
 
-async def set_data_limit(update: Update, context: CallbackContext):
-    try:
-        # Get the numerical value and unit
-        unit = context.user_data.get("data_limit_unit", "MiB")
-        numerical_value = update.message.text.strip()
-        limit = f"{numerical_value}{unit}"
-
-        # Convert human-readable limit to bytes
-        bytes_value = convert_to_bytes(limit)
-        peer_details = context.user_data["peer_details"]
-        peer_details["limit"] = limit  # Human-readable
-        peer_details["remaining"] = bytes_value
-        peer_details["remaining_human"] = bytes_to_human_readable(bytes_value)
-
-        context.user_data["peer_details"] = peer_details
-        await update.message.reply_text(
-            f"✅ Updated <b>Limit (Data)</b> to: {limit}\n\nDo you want to confirm the changes? (yes/no)",
-            parse_mode="HTML",
-        )
-        return CONFIRM_EDIT
-    except ValueError:
-        await update.message.reply_text("❌ Invalid numerical value. Please enter a valid number.")
-        return UPDATE_FIELD
-
-
-async def select_unit(update: Update, context: CallbackContext):
-    query = update.callback_query
-    await query.answer()
-
-    # Save the selected unit in user_data
-    unit = "MiB" if query.data == "unit_mib" else "GiB"
-    context.user_data["data_limit_unit"] = unit
-
-    # Prompt user for the numerical value
-    message = f"✏️ Enter the numerical value for the data limit (in {unit}):"
-    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="edit_peer")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(message, reply_markup=reply_markup)
-    return None  # Wait for numerical input
-
 
 # Step 4: Update Field Value
 async def update_field(update: Update, context: CallbackContext):
     field = context.user_data["selected_field"]
-
-    if field == "Limit (Data)":
-        # Save the field in user_data for the next step
-        context.user_data["field_to_update"] = field
-
-        # Prompt user to choose a unit first
-        message = "🆕 Please choose a unit for the data limit:"
-        keyboard = [
-            [InlineKeyboardButton("MiB", callback_data="unit_mib")],
-            [InlineKeyboardButton("GiB", callback_data="unit_gib")],
-            [InlineKeyboardButton("🔙 Back", callback_data="edit_peer")],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(message, reply_markup=reply_markup)
-        return None  # Wait for the user to select a unit
-
-    # Handle other fields as before
     new_value = update.message.text
     peer_details = context.user_data["peer_details"]
 
+    # Validate and process input based on the selected field
     if field == "DNS":
         peer_details["dns"] = new_value
     elif field == "Blocked Status":
@@ -378,6 +322,16 @@ async def update_field(update: Update, context: CallbackContext):
             peer_details["monitor_blocked"] = new_value.lower() == "blocked"
         else:
             await update.message.reply_text("❌ Invalid value. Please enter 'Blocked' or 'Unblocked'.")
+            return UPDATE_FIELD
+    elif field == "Limit (Data)":
+        try:
+            # Convert human-readable limit to bytes
+            bytes_value = convert_to_bytes(new_value)
+            peer_details["limit"] = new_value  # Human-readable
+            peer_details["remaining"] = bytes_value
+            peer_details["remaining_human"] = bytes_to_human_readable(bytes_value)
+        except ValueError:
+            await update.message.reply_text("❌ Invalid data limit format. Please use a format like '500MiB' or '1.5GiB'.")
             return UPDATE_FIELD
     elif field == "Expiry Time":
         try:
@@ -568,8 +522,6 @@ def main():
     application.add_handler(CallbackQueryHandler(peers_menu, pattern="peers_menu"))
     application.add_handler(peer_conversation)
     application.add_handler(edit_peer_conversation)
-    application.add_handler(CallbackQueryHandler(select_unit, pattern="unit_mib|unit_gib"))
-
 
     print("Bot is running...")
     application.run_polling()
