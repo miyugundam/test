@@ -685,22 +685,30 @@ async def metrics(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     data = api_request("api/metrics")  # Assume a metrics API exists
 
-    if "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error: {data['error']}")
+    if not data or "error" in data:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error fetching metrics: {data.get('error', 'Unknown error')}")
         return
 
-    # Format metrics for a visually appealing display
+    # Safely extract data and handle missing keys
+    cpu = data.get('cpu', 'N/A')
+    ram = data.get('ram', 'N/A')
+    disk_used = data.get('disk', {}).get('used', 'N/A')
+    disk_total = data.get('disk', {}).get('total', 'N/A')
+    uptime = data.get('uptime', 'N/A')
+
+    # Format the message
     message = (
         "📊 **System Metrics**\n\n"
-        f"🖥 **CPU Usage:** {data.get('cpu', 'N/A')}%\n"
-        f"💾 **RAM Usage:** {data.get('ram', 'N/A')}%\n"
-        f"💽 **Disk Usage:** {data.get('disk', {}).get('used', 'N/A')} / {data.get('disk', {}).get('total', 'N/A')}\n"
-        f"⏳ **Uptime:** {data.get('uptime', 'N/A')}\n"
+        f"🖥 **CPU Usage:** {cpu}%\n"
+        f"💾 **RAM Usage:** {ram}%\n"
+        f"💽 **Disk Usage:** {disk_used} / {disk_total}\n"
+        f"⏳ **Uptime:** {uptime}\n"
     )
 
     keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
+
 
 
 
@@ -727,38 +735,46 @@ async def create_backup(update: Update, context: CallbackContext):
     """
     Trigger backup creation and notify the user.
     """
+    query = update.callback_query
+    await query.answer()
+
     response = api_request("api/create-backup", method="POST")
 
-    if "error" in response:
-        await update.message.reply_text(f"❌ Error creating backup: {response['error']}")
+    if not response or "error" in response:
+        await query.message.reply_text(f"❌ Error creating backup: {response.get('error', 'Unknown error')}")
     else:
-        await update.message.reply_text(f"✅ {response['message']}")
+        await query.message.reply_text(f"✅ {response.get('message', 'Backup created successfully.')}")
     await backup_menu(update, context)
+
 
 async def list_backups(update: Update, context: CallbackContext):
     """
     List recent backups and allow deletion.
     """
+    query = update.callback_query
+    await query.answer()
+
     data = api_request("api/backups")
 
-    if "error" in data:
-        await update.message.reply_text(f"❌ Error listing backups: {data['error']}")
+    if not data or "error" in data:
+        await query.message.reply_text(f"❌ Error listing backups: {data.get('error', 'Unknown error')}")
         return
 
     backups = data.get("backups", [])
     if not backups:
-        await update.message.reply_text("❌ No backups found.")
+        await query.message.reply_text("❌ No backups found.")
         return
 
-    # Prepare backup list for user selection
+    # Display backup list
     message = "🗂️ **Available Backups**\n\n"
     for idx, backup in enumerate(backups, start=1):
         message += f"{idx}. `{backup}`\n"
 
     message += "\nPlease send the **number** of the backup you want to delete:"
     context.user_data["backups"] = backups
-    await update.message.reply_text(message, parse_mode="Markdown")
-    return SELECT_BACKUP
+    await query.message.reply_text(message, parse_mode="Markdown")
+    return DELETE_BACKUP
+
 
 
 async def delete_backup(update: Update, context: CallbackContext):
@@ -774,16 +790,17 @@ async def delete_backup(update: Update, context: CallbackContext):
         backup_name = backups[backup_index]
         response = api_request(f"api/delete-backup?name={backup_name}&folder=manual", method="DELETE")
 
-        if "error" in response:
-            await update.message.reply_text(f"❌ Error deleting backup: {response['error']}")
+        if not response or "error" in response:
+            await update.message.reply_text(f"❌ Error deleting backup: {response.get('error', 'Unknown error')}")
         else:
-            await update.message.reply_text(f"✅ {response['message']}")
+            await update.message.reply_text(f"✅ {response.get('message', 'Backup deleted successfully.')}")
     except ValueError:
         await update.message.reply_text("❌ Invalid input. Please send a valid number.")
     except Exception as e:
         await update.message.reply_text(f"❌ An error occurred: {e}")
     finally:
         await backup_menu(update, context)
+
 
 async def restore_backup(update: Update, context: CallbackContext):
     """
@@ -915,11 +932,9 @@ def main():
         CREATE_BACKUP: [CallbackQueryHandler(create_backup, pattern="create_backup")],
         DELETE_BACKUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, delete_backup)],
         RESTORE_BACKUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, perform_restore)],
-        SELECT_BACKUP: [MessageHandler(filters.TEXT & ~filters.COMMAND, list_backups)],
     },
     fallbacks=[CallbackQueryHandler(backup_menu, pattern="backup_menu")],
 )
-
 
 
 
