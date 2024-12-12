@@ -1,13 +1,14 @@
 import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
-from telegram.ext import ConversationHandler, MessageHandler, Filters
+from telegram.ext import ConversationHandler, MessageHandler
+from telegram.ext import filters
 PEER_NAME, PEER_IP, DATA_LIMIT, EXPIRY, CONFIG_FILE, DNS, CONFIRMATION = range(7)
 import requests
 
 # Load Config
 def load_config():
-    config_path = "/root/wire/telegram/config.json"
+    config_path = "/root/src/wire/telegram/config.json"
     try:
         with open(config_path, "r") as config_file:
             config = json.load(config_file)
@@ -241,13 +242,13 @@ def main():
     peer_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(create_peer, pattern="create_peer")],
         states={
-            PEER_NAME: [MessageHandler(Filters.text & ~Filters.command, collect_peer_name)],
-            PEER_IP: [MessageHandler(Filters.text & ~Filters.command, collect_peer_ip)],
-            DATA_LIMIT: [MessageHandler(Filters.text & ~Filters.command, collect_data_limit)],
-            EXPIRY: [MessageHandler(Filters.text & ~Filters.command, collect_expiry)],
-            CONFIG_FILE: [MessageHandler(Filters.text & ~Filters.command, collect_config_file)],
-            DNS: [MessageHandler(Filters.text & ~Filters.command, collect_dns)],
-            CONFIRMATION: [MessageHandler(Filters.text & ~Filters.command, confirm_peer)],
+            PEER_NAME: [MessageHandler(filters.Text & ~filters.Command, collect_peer_name)],
+            PEER_IP: [MessageHandler(filters.Text & ~filters.Command, collect_peer_ip)],
+            DATA_LIMIT: [MessageHandler(filters.Text & ~filters.Command, collect_data_limit)],
+            EXPIRY: [MessageHandler(filters.Text & ~filters.Command, collect_expiry)],
+            CONFIG_FILE: [MessageHandler(filters.Text & ~filters.Command, collect_config_file)],
+            DNS: [MessageHandler(filters.Text & ~filters.Command, collect_dns)],
+            CONFIRMATION: [MessageHandler(filters.Text & ~filters.Command, confirm_peer)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
