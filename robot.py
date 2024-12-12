@@ -3,6 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext
 from telegram.ext import ConversationHandler, MessageHandler
 from telegram.ext import filters
+from telegram.helpers import escape_markdown
 PEER_NAME, PEER_IP, DATA_LIMIT, EXPIRY, CONFIG_FILE, DNS, CONFIRMATION = range(7)
 SELECT_PEER, SELECT_FIELD, UPDATE_FIELD, CONFIRM_EDIT = range(4)
 
@@ -217,12 +218,17 @@ async def fetch_peer_details(update: Update, context: CallbackContext):
     context.user_data["peer_name"] = peer_name
     context.user_data["peer_details"] = matched_peer
 
-    # Show fields for editing
-    fields = "\n".join([f"{i+1}. **{key.capitalize()}**: {value}" for i, (key, value) in enumerate(matched_peer.items())])
-    message = f"🔧 **Peer Details**\n\n{fields}\n\nSend the **number** of the field you want to edit:"
+    # Escape Markdown special characters in peer details
+    fields = "\n".join(
+        [
+            f"{i+1}. *{escape_markdown(key.capitalize())}*: {escape_markdown(str(value))}"
+            for i, (key, value) in enumerate(matched_peer.items())
+        ]
+    )
+    message = f"🔧 *Peer Details*\n\n{fields}\n\nSend the *number* of the field you want to edit:"
     keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="edit_peer")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="MarkdownV2")
     return SELECT_FIELD
 
 
