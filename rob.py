@@ -81,11 +81,15 @@ async def peers_menu(update: Update, context: CallbackContext):
 
 async def peer_status(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    message = "🔍 **Peer Status**\n\nPlease enter the **name** of the peer you want to check:"
+    message = (
+        "🌐 **Peer Status**\n\n"
+        "Please enter the **name** of the peer you want to check:"
+    )
     keyboard = [[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
     return SELECT_PEER
+
 
 async def fetch_peer_status(update: Update, context: CallbackContext):
     peer_name = update.message.text
@@ -101,7 +105,7 @@ async def fetch_peer_status(update: Update, context: CallbackContext):
     if not matched_peer:
         await update.message.reply_text(
             "❌ Peer not found. Please enter a valid peer name:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="peer_status")]]),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]),
             parse_mode="Markdown"
         )
         return SELECT_PEER
@@ -124,7 +128,6 @@ async def fetch_peer_status(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(peer_details, reply_markup=reply_markup, parse_mode="Markdown")
     return ConversationHandler.END
-
 
 
 async def create_peer(update: Update, context: CallbackContext):
