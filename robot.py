@@ -194,19 +194,14 @@ async def edit_peer(update: Update, context: CallbackContext):
 # Step 2: Fetch and Show Peer Details
 async def fetch_peer_details(update: Update, context: CallbackContext):
     peer_name = update.message.text
-    response = api_request(f"api/peers?config=wg0.conf&page=1&limit=50")
+    response = api_request("api/peers?config=wg0.conf&page=1&limit=50")
 
     if "error" in response:
         await update.message.reply_text(f"❌ Error fetching peers: {response['error']}")
         return SELECT_PEER
 
     peers = response.get("peers", [])
-    matched_peer = None
-
-    for peer in peers:
-        if peer.get("peer_name") == peer_name:
-            matched_peer = peer
-            break
+    matched_peer = next((peer for peer in peers if peer.get("peer_name") == peer_name), None)
 
     if not matched_peer:
         await update.message.reply_text("❌ Peer not found. Please enter a valid peer name:")
@@ -233,6 +228,7 @@ async def fetch_peer_details(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
     return SELECT_FIELD
+
 
 
 
@@ -370,14 +366,38 @@ async def confirm_edit(update: Update, context: CallbackContext):
 
     peer_name = context.user_data["peer_name"]
     updated_details = context.user_data["peer_details"]
-    data = {"peerName": peer_name, **updated_details}
 
-    response = api_request("api/edit-peer", method="POST", data=data)
+    # Map fields to API parameters
+    payload = {
+        "peerName": peer_name,
+        "configFile": updated_details.get("config", "wg0.conf"),  # Use default if not present
+    }
+
+    # Add optional fields if they exist
+    if "dns" in updated_details:
+        payload["dns"] = updated_details["dns"]
+
+    if "limit" in updated_details:
+        payload["dataLimit"] = updated_details["limit"]
+
+    if "expiry_time" in updated_details:
+        expiry_time = updated_details["expiry_time"]
+        payload.update({
+            "expiryMonths": expiry_time.get("months", 0),
+            "expiryDays": expiry_time.get("days", 0),
+            "expiryHours": expiry_time.get("hours", 0),
+            "expiryMinutes": expiry_time.get("minutes", 0),
+        })
+
+    # Send the payload to the API
+    response = api_request("api/edit-peer", method="POST", data=payload)
+
     if "error" in response:
         await update.message.reply_text(f"❌ Error editing peer: {response['error']}")
     else:
         await update.message.reply_text(f"✅ Peer edited successfully!\n\n{response['message']}")
     return ConversationHandler.END
+
 
 # Step 6: Cancel Edit
 async def cancel(update: Update, context: CallbackContext):
