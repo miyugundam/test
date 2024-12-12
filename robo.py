@@ -184,12 +184,16 @@ async def confirm_peer(update: Update, context: CallbackContext):
 
 # Step 1: Ask for Peer Name
 async def edit_peer(update: Update, context: CallbackContext):
+    # Clear user data to avoid stale state
+    context.user_data.clear()
+
     chat_id = update.effective_chat.id
     message = "✏️ **Edit Peer**\n\nEnter the **name** of the peer you want to edit:"
     keyboard = [[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
     return SELECT_PEER
+
 
 # Step 2: Fetch and Show Peer Details
 async def fetch_peer_details(update: Update, context: CallbackContext):
@@ -236,13 +240,13 @@ async def fetch_peer_details(update: Update, context: CallbackContext):
 # Step 3: Handle Field Selection
 async def select_field(update: Update, context: CallbackContext):
     """
-    Handle user input to select a field to edit.
+    Handle user input to select a field to edit and provide examples.
     """
     try:
         # Parse the user's input as an integer (menu option)
         field_index = int(update.message.text) - 1
         fields = ["DNS", "Blocked Status", "First Usage", "Peer Name", "Limit (Data)", "Expiry Time"]
-        
+
         # Validate the selected field
         if field_index < 0 or field_index >= len(fields):
             raise ValueError("Invalid selection.")
@@ -251,16 +255,28 @@ async def select_field(update: Update, context: CallbackContext):
         selected_field = fields[field_index]
         context.user_data["selected_field"] = selected_field  # Save selected field for future steps
 
-        # Prompt the user to enter a new value
+        # Define examples for each field
+        examples = {
+            "DNS": "Example: 8.8.8.8 or 1.1.1.1,8.8.4.4",
+            "Blocked Status": "Enter 'Blocked' or 'Unblocked'",
+            "First Usage": "Enter 'Used' or 'Not Used'",
+            "Peer Name": "Example: anna or peer_123",
+            "Limit (Data)": "Example: 500MiB or 1GiB",
+            "Expiry Time": "Format: days,hours,minutes (e.g., 10,0,0 for 10 days)",
+        }
+
+        # Include the example in the prompt
+        example = examples.get(selected_field, "")
         await update.message.reply_text(
-            f"✏️ Enter a new value for <b>{selected_field}</b>:",
-            parse_mode="HTML"
+            f"✏️ Enter a new value for <b>{selected_field}</b>: {example}",
+            parse_mode="HTML",
         )
         return UPDATE_FIELD
     except (ValueError, IndexError):
         # Handle invalid input
         await update.message.reply_text("❌ Invalid selection. Please send the number of the field you want to edit:")
         return SELECT_FIELD
+
 
 
 def bytes_to_human_readable(bytes_value):
@@ -309,44 +325,54 @@ def convert_to_bytes(limit):
 
 # Step 4: Update Field Value
 async def update_field(update: Update, context: CallbackContext):
+    """
+    Validate and update the selected field with examples.
+    """
     field = context.user_data["selected_field"]
     new_value = update.message.text
     peer_details = context.user_data["peer_details"]
 
-    # Validate and process input based on the selected field
+    # Examples and validation for specific fields
     if field == "DNS":
+        example = "Example: 8.8.8.8 or 1.1.1.1,8.8.4.4"
+        if not re.match(r'^(\d{1,3}(\.\d{1,3}){3}|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(,\d{1,3}(\.\d{1,3}){3})*$', new_value):
+            await update.message.reply_text(f"❌ Invalid DNS value. {example}")
+            return UPDATE_FIELD
         peer_details["dns"] = new_value
     elif field == "Blocked Status":
-        if new_value.lower() in ["blocked", "unblocked"]:
-            peer_details["expiry_blocked"] = new_value.lower() == "blocked"
-            peer_details["monitor_blocked"] = new_value.lower() == "blocked"
-        else:
-            await update.message.reply_text("❌ Invalid value. Please enter 'Blocked' or 'Unblocked'.")
+        if new_value.lower() not in ["blocked", "unblocked"]:
+            await update.message.reply_text("❌ Invalid value. Enter 'Blocked' or 'Unblocked'.")
             return UPDATE_FIELD
+        peer_details["expiry_blocked"] = new_value.lower() == "blocked"
+        peer_details["monitor_blocked"] = new_value.lower() == "blocked"
     elif field == "Limit (Data)":
+        example = "Example: 500MiB or 1GiB"
         try:
-            # Convert human-readable limit to bytes
             bytes_value = convert_to_bytes(new_value)
-            peer_details["limit"] = new_value  # Human-readable
+            peer_details["limit"] = new_value
             peer_details["remaining"] = bytes_value
             peer_details["remaining_human"] = bytes_to_human_readable(bytes_value)
         except ValueError:
-            await update.message.reply_text("❌ Invalid data limit format. Please use a format like '500MiB' or '1.5GiB'.")
+            await update.message.reply_text(f"❌ Invalid data limit format. {example}")
             return UPDATE_FIELD
     elif field == "Expiry Time":
+        example = "Format: days,hours,minutes (e.g., 10,0,0)"
         try:
             days, hours, minutes = map(int, new_value.split(","))
-            peer_details["expiry_time"] = {
-                "days": days,
-                "hours": hours,
-                "minutes": minutes,
-            }
+            peer_details["expiry_time"] = {"days": days, "hours": hours, "minutes": minutes}
         except ValueError:
-            await update.message.reply_text("❌ Invalid format. Use 'days,hours,minutes' (e.g., '10,0,0').")
+            await update.message.reply_text(f"❌ Invalid format. {example}")
             return UPDATE_FIELD
     elif field == "First Usage":
+        if new_value.lower() not in ["used", "not used"]:
+            await update.message.reply_text("❌ Invalid value. Enter 'Used' or 'Not Used'.")
+            return UPDATE_FIELD
         peer_details["first_usage"] = new_value.lower() == "used"
     elif field == "Peer Name":
+        example = "Example: anna or peer_123"
+        if not re.match(r"^[a-zA-Z0-9_]+$", new_value):
+            await update.message.reply_text(f"❌ Invalid peer name. {example}")
+            return UPDATE_FIELD
         peer_details["peer_name"] = new_value
 
     context.user_data["peer_details"] = peer_details
@@ -360,10 +386,12 @@ async def update_field(update: Update, context: CallbackContext):
 
 
 
+
 # Step 5: Confirm Changes
 async def confirm_edit(update: Update, context: CallbackContext):
     if update.message.text.lower() != "yes":
         await update.message.reply_text("❌ Peer edit canceled.", reply_markup=ReplyKeyboardRemove())
+        context.user_data.clear()  # Clear user data
         return ConversationHandler.END
 
     peer_name = context.user_data["peer_name"]
@@ -397,13 +425,16 @@ async def confirm_edit(update: Update, context: CallbackContext):
         await update.message.reply_text(f"❌ Error editing peer: {response['error']}")
     else:
         await update.message.reply_text(f"✅ Peer edited successfully!\n\n{response['message']}")
+
+    context.user_data.clear()  # Clear user data
     return ConversationHandler.END
 
 
-# Step 6: Cancel Edit
 async def cancel(update: Update, context: CallbackContext):
     await update.message.reply_text("❌ Peer edit canceled.", reply_markup=ReplyKeyboardRemove())
+    context.user_data.clear()  # Clear user data
     return ConversationHandler.END
+
 
 
 # Metrics
@@ -479,6 +510,12 @@ async def handle_back(update: Update, context: CallbackContext):
         await settings_menu(update, context)
     elif query.data == "backup_menu":
         await backup_menu(update, context)
+    elif query.data == "edit_peer":
+        return await edit_peer(update, context)  # Restart the edit peer process
+    elif query.data == "peers_menu":
+        return await peers_menu(update, context)
+    else:
+        return await start(update, context)
 
 # Initialize Bot
 def main():
@@ -504,6 +541,7 @@ def main():
 , confirm_peer)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )
      # Conversation Handler for Edit Peer
     edit_peer_conversation = ConversationHandler(
@@ -515,6 +553,7 @@ def main():
             CONFIRM_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_edit)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )
 
     # Register Handlers
