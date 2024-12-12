@@ -5,7 +5,7 @@ import requests
 
 # Load Config
 def load_config():
-    config_path = "telegram/config.json"
+    config_path = "/root/wire/telegram/config.json"
     try:
         with open(config_path, "r") as config_file:
             config = json.load(config_file)
