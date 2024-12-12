@@ -313,17 +313,15 @@ async def update_field(update: Update, context: CallbackContext):
     new_value = update.message.text
     peer_details = context.user_data["peer_details"]
 
+    # Validate and process input based on the selected field
     if field == "DNS":
         peer_details["dns"] = new_value
     elif field == "Blocked Status":
-        if new_value.lower() == "blocked":
-            peer_details["expiry_blocked"] = True
-            peer_details["monitor_blocked"] = True
-        elif new_value.lower() == "unblocked":
-            peer_details["expiry_blocked"] = False
-            peer_details["monitor_blocked"] = False
+        if new_value.lower() in ["blocked", "unblocked"]:
+            peer_details["expiry_blocked"] = new_value.lower() == "blocked"
+            peer_details["monitor_blocked"] = new_value.lower() == "blocked"
         else:
-            await update.message.reply_text("Invalid value. Please enter 'Blocked' or 'Unblocked'.")
+            await update.message.reply_text("❌ Invalid value. Please enter 'Blocked' or 'Unblocked'.")
             return UPDATE_FIELD
     elif field == "Limit (Data)":
         try:
@@ -333,16 +331,18 @@ async def update_field(update: Update, context: CallbackContext):
             peer_details["remaining"] = bytes_value
             peer_details["remaining_human"] = bytes_to_human_readable(bytes_value)
         except ValueError:
-            await update.message.reply_text("Invalid data limit format. Please use a format like '500MiB' or '1.5GiB'.")
+            await update.message.reply_text("❌ Invalid data limit format. Please use a format like '500MiB' or '1.5GiB'.")
             return UPDATE_FIELD
     elif field == "Expiry Time":
         try:
             days, hours, minutes = map(int, new_value.split(","))
-            peer_details["expiry_time"]["days"] = days
-            peer_details["expiry_time"]["hours"] = hours
-            peer_details["expiry_time"]["minutes"] = minutes
+            peer_details["expiry_time"] = {
+                "days": days,
+                "hours": hours,
+                "minutes": minutes,
+            }
         except ValueError:
-            await update.message.reply_text("Invalid format. Use 'days,hours,minutes' (e.g., '10,0,0').")
+            await update.message.reply_text("❌ Invalid format. Use 'days,hours,minutes' (e.g., '10,0,0').")
             return UPDATE_FIELD
     elif field == "First Usage":
         peer_details["first_usage"] = new_value.lower() == "used"
@@ -358,6 +358,7 @@ async def update_field(update: Update, context: CallbackContext):
     return CONFIRM_EDIT
 
 
+
 # Step 5: Confirm Changes
 async def confirm_edit(update: Update, context: CallbackContext):
     if update.message.text.lower() != "yes":
@@ -367,9 +368,9 @@ async def confirm_edit(update: Update, context: CallbackContext):
     peer_name = context.user_data["peer_name"]
     updated_details = context.user_data["peer_details"]
 
-    # Map fields to API parameters (excluding configFile)
+    # Prepare payload with only allowed fields
     payload = {
-        "peerName": peer_name,
+        "peerName": peer_name,  # Required
     }
 
     # Add optional fields if they exist
@@ -378,12 +379,6 @@ async def confirm_edit(update: Update, context: CallbackContext):
 
     if "limit" in updated_details:
         payload["dataLimit"] = updated_details["limit"]
-
-    if "expiry_blocked" in updated_details:
-        payload["expiry_blocked"] = updated_details["expiry_blocked"]
-
-    if "monitor_blocked" in updated_details:
-        payload["monitor_blocked"] = updated_details["monitor_blocked"]
 
     if "expiry_time" in updated_details:
         expiry_time = updated_details["expiry_time"]
@@ -402,6 +397,7 @@ async def confirm_edit(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"✅ Peer edited successfully!\n\n{response['message']}")
     return ConversationHandler.END
+
 
 
 
