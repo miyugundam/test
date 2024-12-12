@@ -947,8 +947,8 @@ def main():
     peer_conversation = ConversationHandler(
     entry_points=[CallbackQueryHandler(create_peer, pattern="create_peer")],
     states={
-        SELECT_INTERFACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_interface_for_create)],
-        PEER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_peer_name)],
+        SELECT_INTERFACE: [CallbackQueryHandler(collect_peer_name, pattern="select_interface_.*")],
+        PEER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, validate_peer_name)],
         PEER_IP: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_peer_ip)],
         DATA_LIMIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_data_limit)],
         EXPIRY: [MessageHandler(filters.TEXT & ~filters.COMMAND, collect_expiry)],
@@ -959,6 +959,7 @@ def main():
     fallbacks=[CallbackQueryHandler(peers_menu, pattern="peers_menu")],
     allow_reentry=True,
 )
+
 
      # Conversation Handler for Edit Peer
     edit_peer_conversation = ConversationHandler(
