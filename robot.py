@@ -8,7 +8,7 @@ import requests
 
 # Load Config
 def load_config():
-    config_path = "/root/src/wire/telegram/config.json"
+    config_path = "/root/wire/src/telegram/config.json"
     try:
         with open(config_path, "r") as config_file:
             config = json.load(config_file)
@@ -242,13 +242,20 @@ def main():
     peer_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(create_peer, pattern="create_peer")],
         states={
-            PEER_NAME: [MessageHandler(filters.Text & ~filters.Command, collect_peer_name)],
-            PEER_IP: [MessageHandler(filters.Text & ~filters.Command, collect_peer_ip)],
-            DATA_LIMIT: [MessageHandler(filters.Text & ~filters.Command, collect_data_limit)],
-            EXPIRY: [MessageHandler(filters.Text & ~filters.Command, collect_expiry)],
-            CONFIG_FILE: [MessageHandler(filters.Text & ~filters.Command, collect_config_file)],
-            DNS: [MessageHandler(filters.Text & ~filters.Command, collect_dns)],
-            CONFIRMATION: [MessageHandler(filters.Text & ~filters.Command, confirm_peer)],
+            PEER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND
+, collect_peer_name)],
+            PEER_IP: [MessageHandler(filters.TEXT & ~filters.COMMAND
+, collect_peer_ip)],
+            DATA_LIMIT: [MessageHandler(filters.TEXT & ~filters.COMMAND
+, collect_data_limit)],
+            EXPIRY: [MessageHandler(filters.TEXT & ~filters.COMMAND
+, collect_expiry)],
+            CONFIG_FILE: [MessageHandler(filters.TEXT & ~filters.COMMAND
+, collect_config_file)],
+            DNS: [MessageHandler(filters.TEXT & ~filters.COMMAND
+, collect_dns)],
+            CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND
+, confirm_peer)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
