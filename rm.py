@@ -13,6 +13,8 @@ import re
 import requests
 import aiohttp
 from io import BytesIO
+import matplotlib
+matplotlib.use('Agg')  # Use a non-interactive backend
 import matplotlib.pyplot as plt
 
 # Load Config
@@ -90,7 +92,7 @@ async def backups_menu(update: Update, context: CallbackContext):
 
 # Show Backups
 async def show_backups(update: Update, context: CallbackContext):
-    """Fetch and display available manual backups."""
+    """Fetch and display available manual backups with download links."""
     query = update.callback_query
     await query.answer()
     chat_id = query.message.chat_id
@@ -103,11 +105,31 @@ async def show_backups(update: Update, context: CallbackContext):
     backups = response.get("backups", [])
     if not backups:
         await query.message.reply_text("No manual backups found.")
-    else:
-        backup_list = "\n".join([f"📁 {backup}" for backup in backups])
-        await query.message.reply_text(f"📦 **Available Backups:**\n\n{backup_list}", parse_mode="Markdown")
+        await backups_menu(update, context)
+        return ConversationHandler.END
 
-    await backups_menu(update, context)
+    # Create buttons for each backup with a download link
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"📄 {backup}",
+                callback_data=f"show_backup_details_{backup}"
+            ),
+            InlineKeyboardButton(
+                "⬇️ Download", url=f"{config['base_url']}/api/download-backup?name={backup}"
+            ),
+        ]
+        for backup in backups
+    ]
+    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="backups_menu")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text(
+        "📦 **Available Backups:**\n\nSelect a backup or download directly:",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
 
 # Create Backup
 async def create_backup(update: Update, context: CallbackContext):
@@ -215,6 +237,7 @@ def register_backup_handlers(application):
     application.add_handler(CallbackQueryHandler(restore_backup, pattern="restore_.*"))
 
 async def fetch_metrics(update: Update, context: CallbackContext):
+    """Fetch and display system metrics as a chart."""
     chat_id = update.effective_chat.id
 
     # Fetch metrics from the API
@@ -241,7 +264,7 @@ async def fetch_metrics(update: Update, context: CallbackContext):
     plt.bar(metrics_labels, metrics_values, color=["blue", "green", "orange"])
     plt.title("System Metrics")
     plt.ylabel("Percentage / GB")
-    plt.ylim(0, 100 if "GB" not in str(disk["total"]) else None)
+    plt.ylim(0, 100)
     plt.grid(axis="y")
 
     # Save chart to a BytesIO buffer
@@ -249,11 +272,9 @@ async def fetch_metrics(update: Update, context: CallbackContext):
     plt.savefig(buffer, format="png")
     buffer.seek(0)
 
-    # Inline keyboard with a back button
+    # Send the image to the user
     keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    # Send the image to the user
     await context.bot.send_photo(
         chat_id,
         photo=buffer,
