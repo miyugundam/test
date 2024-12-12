@@ -193,8 +193,8 @@ async def edit_peer(update: Update, context: CallbackContext):
 
 # Step 2: Fetch and Show Peer Details
 async def fetch_peer_details(update: Update, context: CallbackContext):
-    peer_name = update.message.text  # User-provided peer name
-    response = api_request(f"api/peers?config=wg0.conf&page=1&limit=50")  # Fetch all peers (adjust limit as needed)
+    peer_name = update.message.text
+    response = api_request(f"api/peers?config=wg0.conf&page=1&limit=50")
 
     if "error" in response:
         await update.message.reply_text(f"❌ Error fetching peers: {response['error']}")
@@ -203,7 +203,6 @@ async def fetch_peer_details(update: Update, context: CallbackContext):
     peers = response.get("peers", [])
     matched_peer = None
 
-    # Search for the peer by name
     for peer in peers:
         if peer.get("peer_name") == peer_name:
             matched_peer = peer
@@ -213,22 +212,28 @@ async def fetch_peer_details(update: Update, context: CallbackContext):
         await update.message.reply_text("❌ Peer not found. Please enter a valid peer name:")
         return SELECT_PEER
 
-    # Save the matched peer details in user_data
     context.user_data["peer_name"] = peer_name
     context.user_data["peer_details"] = matched_peer
 
-    # Format peer details as HTML
+    # Prepare relevant fields for display
+    peer_details = {
+        "DNS": matched_peer["dns"],
+        "Blocked Status": "Blocked" if matched_peer["expiry_blocked"] or matched_peer["monitor_blocked"] else "Unblocked",
+        "First Usage": "Used" if matched_peer["first_usage"] else "Not Used",
+        "Peer Name": matched_peer["peer_name"],
+        "Limit (Data)": matched_peer["limit"],
+        "Expiry Time": f"{matched_peer['expiry_time']['days']} days, {matched_peer['expiry_time']['hours']} hours, {matched_peer['expiry_time']['minutes']} minutes",
+    }
+
     fields = "\n".join(
-        [
-            f"{i+1}. <b>{key.capitalize()}</b>: {value}"
-            for i, (key, value) in enumerate(matched_peer.items())
-        ]
+        [f"{i+1}. <b>{key}</b>: {value}" for i, (key, value) in enumerate(peer_details.items())]
     )
     message = f"🔧 <b>Peer Details</b>\n\n{fields}\n\nSend the <b>number</b> of the field you want to edit:"
     keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="edit_peer")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
     return SELECT_FIELD
+
 
 
 
@@ -246,15 +251,100 @@ async def select_field(update: Update, context: CallbackContext):
         await update.message.reply_text("❌ Invalid selection. Please send the number of the field you want to edit:")
         return SELECT_FIELD
 
+def bytes_to_human_readable(bytes_value):
+    """
+    Convert bytes to human-readable format using GiB, MiB, KiB units.
+    """
+    if bytes_value >= 1024 ** 3:  # Greater than or equal to 1 GiB
+        return f"{bytes_value / (1024 ** 3):.2f} GiB"
+    elif bytes_value >= 1024 ** 2:  # Greater than or equal to 1 MiB
+        return f"{bytes_value / (1024 ** 2):.2f} MiB"
+    elif bytes_value >= 1024:  # Greater than or equal to 1 KiB
+        return f"{bytes_value / 1024:.2f} KiB"
+    else:
+        return f"{bytes_value} bytes"
+
+
+
+
+def convert_to_bytes(limit):
+    """
+    Convert a string like '1.5GiB' or '1024MiB' into bytes.
+    Supports 'B', 'KiB', 'MiB', and 'GiB'.
+    """
+    try:
+        # If limit is already a numeric type, return it as bytes
+        if isinstance(limit, (int, float)):
+            return int(limit)
+
+        # Handle string input with units
+        size, unit = float(limit[:-3]), limit[-3:].upper()
+        unit_mapping = {
+            "B": 1,
+            "KIB": 1024,
+            "MIB": 1024 ** 2,
+            "GIB": 1024 ** 3,
+        }
+
+        if unit not in unit_mapping:
+            raise ValueError(f"Invalid unit: {unit}")
+        
+        return int(size * unit_mapping[unit])
+    except (ValueError, TypeError) as e:
+        print(f"Error converting limit to bytes: {e}")
+        return 0
+
+
 # Step 4: Update Field Value
 async def update_field(update: Update, context: CallbackContext):
+    field = context.user_data["selected_field"]
     new_value = update.message.text
-    selected_field = context.user_data["selected_field"]
-    context.user_data["peer_details"][selected_field] = new_value
+    peer_details = context.user_data["peer_details"]
 
-    message = f"✅ Updated **{selected_field.capitalize()}** to: {new_value}\n\nDo you want to confirm the changes? (yes/no)"
-    await update.message.reply_text(message, parse_mode="Markdown")
+    if field == "DNS":
+        peer_details["dns"] = new_value
+    elif field == "Blocked Status":
+        if new_value.lower() == "blocked":
+            peer_details["expiry_blocked"] = True
+            peer_details["monitor_blocked"] = True
+        elif new_value.lower() == "unblocked":
+            peer_details["expiry_blocked"] = False
+            peer_details["monitor_blocked"] = False
+        else:
+            await update.message.reply_text("Invalid value. Please enter 'Blocked' or 'Unblocked'.")
+            return UPDATE_FIELD
+    elif field == "Limit (Data)":
+        try:
+            # Convert human-readable limit to bytes
+            bytes_value = convert_to_bytes(new_value)
+            peer_details["limit"] = new_value  # Human-readable
+            peer_details["remaining"] = bytes_value
+            peer_details["remaining_human"] = bytes_to_human_readable(bytes_value)
+        except ValueError:
+            await update.message.reply_text("Invalid data limit format. Please use a format like '500MiB' or '1.5GiB'.")
+            return UPDATE_FIELD
+    elif field == "Expiry Time":
+        try:
+            days, hours, minutes = map(int, new_value.split(","))
+            peer_details["expiry_time"]["days"] = days
+            peer_details["expiry_time"]["hours"] = hours
+            peer_details["expiry_time"]["minutes"] = minutes
+        except ValueError:
+            await update.message.reply_text("Invalid format. Use 'days,hours,minutes' (e.g., '10,0,0').")
+            return UPDATE_FIELD
+    elif field == "First Usage":
+        peer_details["first_usage"] = new_value.lower() == "used"
+    elif field == "Peer Name":
+        peer_details["peer_name"] = new_value
+
+    context.user_data["peer_details"] = peer_details
+
+    await update.message.reply_text(
+        f"✅ Updated <b>{field}</b> to: {new_value}\n\nDo you want to confirm the changes? (yes/no)",
+        parse_mode="HTML",
+    )
     return CONFIRM_EDIT
+
 
 # Step 5: Confirm Changes
 async def confirm_edit(update: Update, context: CallbackContext):
