@@ -239,17 +239,33 @@ async def fetch_peer_details(update: Update, context: CallbackContext):
 
 # Step 3: Handle Field Selection
 async def select_field(update: Update, context: CallbackContext):
+    """
+    Handle user input to select a field to edit.
+    """
     try:
+        # Parse the user's input as an integer (menu option)
         field_index = int(update.message.text) - 1
-        fields = list(context.user_data["peer_details"].keys())
-        selected_field = fields[field_index]
-        context.user_data["selected_field"] = selected_field
+        fields = ["DNS", "Blocked Status", "First Usage", "Peer Name", "Limit (Data)", "Expiry Time"]
+        
+        # Validate the selected field
+        if field_index < 0 or field_index >= len(fields):
+            raise ValueError("Invalid selection.")
 
-        await update.message.reply_text(f"✏️ Enter a new value for **{selected_field.capitalize()}**:")
+        # Get the selected field name
+        selected_field = fields[field_index]
+        context.user_data["selected_field"] = selected_field  # Save selected field for future steps
+
+        # Prompt the user to enter a new value
+        await update.message.reply_text(
+            f"✏️ Enter a new value for <b>{selected_field}</b>:",
+            parse_mode="HTML"
+        )
         return UPDATE_FIELD
     except (ValueError, IndexError):
+        # Handle invalid input
         await update.message.reply_text("❌ Invalid selection. Please send the number of the field you want to edit:")
         return SELECT_FIELD
+
 
 def bytes_to_human_readable(bytes_value):
     """
