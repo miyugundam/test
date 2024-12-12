@@ -367,10 +367,9 @@ async def confirm_edit(update: Update, context: CallbackContext):
     peer_name = context.user_data["peer_name"]
     updated_details = context.user_data["peer_details"]
 
-    # Map fields to API parameters
+    # Map fields to API parameters (excluding configFile)
     payload = {
         "peerName": peer_name,
-        "configFile": updated_details.get("config", "wg0.conf"),  # Use default if not present
     }
 
     # Add optional fields if they exist
@@ -379,6 +378,12 @@ async def confirm_edit(update: Update, context: CallbackContext):
 
     if "limit" in updated_details:
         payload["dataLimit"] = updated_details["limit"]
+
+    if "expiry_blocked" in updated_details:
+        payload["expiry_blocked"] = updated_details["expiry_blocked"]
+
+    if "monitor_blocked" in updated_details:
+        payload["monitor_blocked"] = updated_details["monitor_blocked"]
 
     if "expiry_time" in updated_details:
         expiry_time = updated_details["expiry_time"]
@@ -389,7 +394,7 @@ async def confirm_edit(update: Update, context: CallbackContext):
             "expiryMinutes": expiry_time.get("minutes", 0),
         })
 
-    # Send the payload to the API
+    # Send the filtered payload to the API
     response = api_request("api/edit-peer", method="POST", data=payload)
 
     if "error" in response:
@@ -397,6 +402,7 @@ async def confirm_edit(update: Update, context: CallbackContext):
     else:
         await update.message.reply_text(f"✅ Peer edited successfully!\n\n{response['message']}")
     return ConversationHandler.END
+
 
 
 # Step 6: Cancel Edit
