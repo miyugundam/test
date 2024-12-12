@@ -47,6 +47,7 @@ def api_request(endpoint, method="GET", data=None):
     except Exception as e:
         return {"error": str(e)}
 
+
 # Main Menu
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
@@ -193,23 +194,47 @@ async def edit_peer(update: Update, context: CallbackContext):
 # Step 2: Fetch and Show Peer Details
 async def fetch_peer_details(update: Update, context: CallbackContext):
     peer_name = update.message.text
-    response = api_request(f"api/get-peer-details?peerName={peer_name}")
-    
-    if "error" in response:
-        await update.message.reply_text(f"❌ Error: {response['error']}")
+    page = 1
+    limit = 10
+    matched_peer = None
+
+    # Fetch all peers across pages
+    while True:
+        response = api_request(f"api/peers?config=wg0.conf&page={page}&limit={limit}")
+        if "error" in response:
+            await update.message.reply_text(f"❌ Error fetching peers: {response['error']}")
+            return SELECT_PEER
+
+        peers = response.get("peers", [])
+        total_pages = response.get("total_pages", 1)
+
+        # Search for the peer by name
+        for peer in peers:
+            if peer.get("peer_name") == peer_name:
+                matched_peer = peer
+                break
+
+        if matched_peer or page >= total_pages:
+            break
+
+        page += 1
+
+    if not matched_peer:
+        await update.message.reply_text("❌ Peer not found. Please enter a valid peer name:")
         return SELECT_PEER
 
-    # Save peer details in user_data
+    # Save the matched peer details in user_data
     context.user_data["peer_name"] = peer_name
-    context.user_data["peer_details"] = response
+    context.user_data["peer_details"] = matched_peer
 
     # Show fields for editing
-    fields = "\n".join([f"{i+1}. **{key.capitalize()}**: {value}" for i, (key, value) in enumerate(response.items())])
+    fields = "\n".join([f"{i+1}. **{key.capitalize()}**: {value}" for i, (key, value) in enumerate(matched_peer.items())])
     message = f"🔧 **Peer Details**\n\n{fields}\n\nSend the **number** of the field you want to edit:"
     keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="edit_peer")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return SELECT_FIELD
+
 
 # Step 3: Handle Field Selection
 async def select_field(update: Update, context: CallbackContext):
@@ -253,7 +278,7 @@ async def confirm_edit(update: Update, context: CallbackContext):
     return ConversationHandler.END
 
 # Step 6: Cancel Edit
-async def cancel_edit(update: Update, context: CallbackContext):
+async def cancel(update: Update, context: CallbackContext):
     await update.message.reply_text("❌ Peer edit canceled.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
@@ -366,7 +391,7 @@ def main():
             UPDATE_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_field)],
             CONFIRM_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_edit)],
         },
-        fallbacks=[CommandHandler("cancel", cancel_edit)],
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     # Register Handlers
