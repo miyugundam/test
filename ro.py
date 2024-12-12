@@ -11,6 +11,7 @@ SELECT_INTERFACE = 0
 CREATE_BACKUP, DELETE_BACKUP, RESTORE_BACKUP, SELECT_BACKUP = range(4, 8)
 import re
 import requests
+import aiohttp
 
 # Load Config
 def load_config():
@@ -37,19 +38,23 @@ TELEGRAM_BOT_TOKEN = config["bot_token"]
 API_KEY = config["api_key"]
 
 # Helper Function to Handle API Requests
-def api_request(endpoint, method="GET", data=None):
+async def api_request(endpoint, method="GET", data=None):
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     url = f"{API_BASE_URL}/{endpoint}"
     try:
-        if method == "POST":
-            response = requests.post(url, json=data, headers=headers)
-        elif method == "DELETE":
-            response = requests.delete(url, json=data, headers=headers)
-        else:
-            response = requests.get(url, headers=headers)
-        return response.json()
+        async with aiohttp.ClientSession() as session:
+            if method == "POST":
+                async with session.post(url, json=data, headers=headers, timeout=10) as response:
+                    return await response.json()
+            elif method == "DELETE":
+                async with session.delete(url, json=data, headers=headers, timeout=10) as response:
+                    return await response.json()
+            else:
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    return await response.json()
     except Exception as e:
         return {"error": str(e)}
+
 
 
 # Main Menu
@@ -64,6 +69,7 @@ async def start(update: Update, context: CallbackContext):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
 
 # Peers Menu
 async def peers_menu(update: Update, context: CallbackContext):
@@ -679,42 +685,28 @@ async def cancel(update: Update, context: CallbackContext):
 
 # Metrics
 async def metrics(update: Update, context: CallbackContext):
-    """
-    Fetch and display system metrics in a visually appealing format.
-    """
     chat_id = update.effective_chat.id
-    try:
-        # Fetch metrics data
-        data = api_request("api/metrics")
+    await context.bot.send_message(chat_id=chat_id, text="⏳ Fetching system metrics, please wait...")
 
-        if "error" in data:
-            await context.bot.send_message(chat_id=chat_id, text=f"❌ Error: {data['error']}")
-            return
+    data = await api_request("api/metrics")
 
-        # Format the response for display
-        message = (
-            "📊 **System Metrics**\n\n"
-            f"🖥 **CPU Usage:** {data.get('cpu', 'N/A')}\n"
-            f"💾 **RAM Usage:** {data.get('ram', 'N/A')}\n"
-            f"💽 **Disk Usage:** {data.get('disk', {}).get('used', 'N/A')} / {data.get('disk', {}).get('total', 'N/A')} "
-            f"({data.get('disk', {}).get('percent', 'N/A')}%)\n"
-            f"⏳ **Uptime:** {data.get('uptime', 'N/A')}\n"
-        )
+    if "error" in data:
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error fetching metrics: {data['error']}")
+        return
 
-        # Send the message
-        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
+    # Format and display the metrics
+    message = (
+        "📊 **System Metrics**\n\n"
+        f"🖥 **CPU Usage:** {data.get('cpu', 'N/A')}\n"
+        f"💾 **RAM Usage:** {data.get('ram', 'N/A')}\n"
+        f"💽 **Disk Usage:** {data.get('disk', {}).get('used', 'N/A')} / {data.get('disk', {}).get('total', 'N/A')} "
+        f"({data.get('disk', {}).get('percent', 'N/A')}%)\n"
+        f"⏳ **Uptime:** {data.get('uptime', 'N/A')}\n"
+    )
+    keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
 
-    except Exception as e:
-        # Handle unexpected errors
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ An error occurred while fetching metrics: {e}")
-
-
-
-
-
-# Backup Menu
 async def backup_menu(update: Update, context: CallbackContext):
     """
     Display the backup management menu.
@@ -747,42 +739,22 @@ async def create_backup(update: Update, context: CallbackContext):
     else:
         await query.message.reply_text(f"✅ {response.get('message', 'Backup created successfully.')}")
     await backup_menu(update, context)
-
-
-async def list_backups(update: Update, context: CallbackContext):
-    """
-    List recent backups and allow deletion.
-    """
+    
+async def create_backup(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
 
-    data = api_request("api/backups")
+    data = await api_request("api/create-backup", method="POST")
 
-    if not data or "error" in data:
-        await query.message.reply_text(f"❌ Error listing backups: {data.get('error', 'Unknown error')}")
-        return
+    if "error" in data:
+        await query.message.reply_text(f"❌ Error creating backup: {data['error']}")
+    else:
+        await query.message.reply_text(f"✅ Backup created successfully: {data.get('message', 'Success')}")
 
-    backups = data.get("backups", [])
-    if not backups:
-        await query.message.reply_text("❌ No backups found.")
-        return
-
-    # Display backup list
-    message = "🗂️ **Available Backups**\n\n"
-    for idx, backup in enumerate(backups, start=1):
-        message += f"{idx}. `{backup}`\n"
-
-    message += "\nPlease send the **number** of the backup you want to delete:"
-    context.user_data["backups"] = backups
-    await query.message.reply_text(message, parse_mode="Markdown")
-    return DELETE_BACKUP
-
+    await backup_menu(update, context)
 
 
 async def delete_backup(update: Update, context: CallbackContext):
-    """
-    Delete the selected backup.
-    """
     try:
         backup_index = int(update.message.text) - 1
         backups = context.user_data.get("backups", [])
@@ -790,25 +762,20 @@ async def delete_backup(update: Update, context: CallbackContext):
             raise ValueError("Invalid selection.")
 
         backup_name = backups[backup_index]
-        response = api_request(f"api/delete-backup?name={backup_name}&folder=manual", method="DELETE")
+        data = await api_request(f"api/delete-backup?name={backup_name}&folder=manual", method="DELETE")
 
-        if not response or "error" in response:
-            await update.message.reply_text(f"❌ Error deleting backup: {response.get('error', 'Unknown error')}")
+        if "error" in data:
+            await update.message.reply_text(f"❌ Error deleting backup: {data['error']}")
         else:
-            await update.message.reply_text(f"✅ {response.get('message', 'Backup deleted successfully.')}")
+            await update.message.reply_text(f"✅ Backup deleted successfully: {data.get('message', 'Success')}")
     except ValueError:
         await update.message.reply_text("❌ Invalid input. Please send a valid number.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ An error occurred: {e}")
     finally:
         await backup_menu(update, context)
 
 
 async def restore_backup(update: Update, context: CallbackContext):
-    """
-    List backups and allow the user to select one for restoration.
-    """
-    data = api_request("api/backups")
+    data = await api_request("api/backups")
 
     if "error" in data:
         await update.message.reply_text(f"❌ Error listing backups: {data['error']}")
@@ -831,9 +798,6 @@ async def restore_backup(update: Update, context: CallbackContext):
 
 
 async def perform_restore(update: Update, context: CallbackContext):
-    """
-    Perform the restoration of the selected backup.
-    """
     try:
         backup_index = int(update.message.text) - 1
         backups = context.user_data.get("backups", [])
@@ -841,18 +805,17 @@ async def perform_restore(update: Update, context: CallbackContext):
             raise ValueError("Invalid selection.")
 
         backup_name = backups[backup_index]
-        response = api_request("api/restore-backup", method="POST", data={"backupName": backup_name})
+        data = await api_request("api/restore-backup", method="POST", data={"backupName": backup_name})
 
-        if "error" in response:
-            await update.message.reply_text(f"❌ Error restoring backup: {response['error']}")
+        if "error" in data:
+            await update.message.reply_text(f"❌ Error restoring backup: {data['error']}")
         else:
-            await update.message.reply_text(f"✅ {response['message']}")
+            await update.message.reply_text(f"✅ Backup restored successfully: {data.get('message', 'Success')}")
     except ValueError:
         await update.message.reply_text("❌ Invalid input. Please send a valid number.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ An error occurred: {e}")
     finally:
         await backup_menu(update, context)
+
 
 
 # Back Button Handler
