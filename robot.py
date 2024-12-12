@@ -4,6 +4,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Call
 from telegram.ext import ConversationHandler, MessageHandler
 from telegram.ext import filters
 PEER_NAME, PEER_IP, DATA_LIMIT, EXPIRY, CONFIG_FILE, DNS, CONFIRMATION = range(7)
+SELECT_PEER, SELECT_FIELD, UPDATE_FIELD, CONFIRM_EDIT = range(4)
+
 import requests
 
 # Load Config
@@ -45,6 +47,7 @@ def api_request(endpoint, method="GET", data=None):
     except Exception as e:
         return {"error": str(e)}
 
+
 # Main Menu
 async def start(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
@@ -74,16 +77,22 @@ async def peers_menu(update: Update, context: CallbackContext):
 
 async def create_peer(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
-    await context.bot.send_message(chat_id=chat_id, text="Enter a name for the peer (letters, numbers, and underscores only):")
+    message = "🆕 **Peer Creation**\n\nEnter a **name** for the peer (letters, numbers, and underscores only):"
+    keyboard = [[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
     return PEER_NAME
 
 async def collect_peer_name(update: Update, context: CallbackContext):
     peer_name = update.message.text
     if not peer_name or not re.match(r"^[a-zA-Z0-9_]+$", peer_name):
-        await update.message.reply_text("Invalid peer name. Please try again:")
+        await update.message.reply_text("❌ Invalid peer name. Please try again (letters, numbers, and underscores only):")
         return PEER_NAME
     context.user_data["peer_name"] = peer_name
-    await update.message.reply_text("Enter the IP address for the peer:")
+    message = "🌐 **Enter the IP address for the peer:**"
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="create_peer")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return PEER_IP
 
 async def collect_peer_ip(update: Update, context: CallbackContext):
@@ -91,19 +100,25 @@ async def collect_peer_ip(update: Update, context: CallbackContext):
     try:
         ip_address(peer_ip)
     except ValueError:
-        await update.message.reply_text("Invalid IP address. Please enter a valid IP:")
+        await update.message.reply_text("❌ Invalid IP address. Please enter a valid IP:")
         return PEER_IP
     context.user_data["peer_ip"] = peer_ip
-    await update.message.reply_text("Enter a data limit for the peer (e.g., 500MiB or 1GiB):")
+    message = "📊 **Enter a data limit for the peer** (e.g., 500MiB or 1GiB):"
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="collect_peer_name")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return DATA_LIMIT
 
 async def collect_data_limit(update: Update, context: CallbackContext):
     data_limit = update.message.text
     if not re.match(r"^\d+(MiB|GiB)$", data_limit):
-        await update.message.reply_text("Invalid data limit. Enter a value like 500MiB or 1GiB:")
+        await update.message.reply_text("❌ Invalid data limit. Enter a value like 500MiB or 1GiB:")
         return DATA_LIMIT
     context.user_data["data_limit"] = data_limit
-    await update.message.reply_text("Enter expiry time in days (e.g., 30):")
+    message = "📅 **Enter expiry time in days** (e.g., 30):"
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="collect_peer_ip")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return EXPIRY
 
 async def collect_expiry(update: Update, context: CallbackContext):
@@ -113,31 +128,42 @@ async def collect_expiry(update: Update, context: CallbackContext):
             raise ValueError("Expiry must be greater than zero.")
         context.user_data["expiry_days"] = expiry_days
     except ValueError:
-        await update.message.reply_text("Invalid expiry time. Please enter a positive number:")
+        await update.message.reply_text("❌ Invalid expiry time. Please enter a positive number:")
         return EXPIRY
-    await update.message.reply_text("Enter the config file name (default is wg0.conf):")
+    message = "⚙️ **Enter the config file name** (default is wg0.conf):"
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="collect_data_limit")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return CONFIG_FILE
 
 async def collect_config_file(update: Update, context: CallbackContext):
     config_file = update.message.text or "wg0.conf"
     if not re.match(r"^[a-zA-Z0-9_-]+\.conf$", config_file):
-        await update.message.reply_text("Invalid config file name. Please try again:")
+        await update.message.reply_text("❌ Invalid config file name. Please try again:")
         return CONFIG_FILE
     context.user_data["config_file"] = config_file
-    await update.message.reply_text("Enter DNS values (comma-separated, default: 1.1.1.1):")
+    message = "🔧 **Enter DNS values** (comma-separated, default: 1.1.1.1):"
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="collect_expiry")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return DNS
 
 async def collect_dns(update: Update, context: CallbackContext):
     dns = update.message.text or "1.1.1.1"
     context.user_data["dns"] = dns
 
-    details = "\n".join([f"{key}: {value}" for key, value in context.user_data.items()])
-    await update.message.reply_text(f"Please confirm the following details:\n{details}\n\nSend 'yes' to confirm or 'no' to cancel.")
+    details = "\n".join([f"**{key.capitalize()}**: {value}" for key, value in context.user_data.items()])
+    message = f"✅ **Review Peer Details:**\n\n{details}\n\nSend **yes** to confirm or **no** to cancel."
+    keyboard = [
+        [InlineKeyboardButton("🔙 Back", callback_data="collect_config_file")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return CONFIRMATION
 
 async def confirm_peer(update: Update, context: CallbackContext):
     if update.message.text.lower() != "yes":
-        await update.message.reply_text("Peer creation canceled.", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("❌ Peer creation canceled.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
     data = {
@@ -150,15 +176,102 @@ async def confirm_peer(update: Update, context: CallbackContext):
     }
     response = api_request("api/create-peer", method="POST", data=data)
     if "error" in response:
-        await update.message.reply_text(f"Error creating peer: {response['error']}")
+        await update.message.reply_text(f"❌ Error creating peer: {response['error']}")
     else:
-        await update.message.reply_text(f"Peer created successfully!\n{response['message']}")
-
+        await update.message.reply_text(f"✅ Peer created successfully!\n\n{response['message']}")
     return ConversationHandler.END
 
+
+# Step 1: Ask for Peer Name
+async def edit_peer(update: Update, context: CallbackContext):
+    chat_id = update.effective_chat.id
+    message = "✏️ **Edit Peer**\n\nEnter the **name** of the peer you want to edit:"
+    keyboard = [[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
+    return SELECT_PEER
+
+# Step 2: Fetch and Show Peer Details
+async def fetch_peer_details(update: Update, context: CallbackContext):
+    peer_name = update.message.text  # User-provided peer name
+    response = api_request(f"api/peers?config=wg0.conf&page=1&limit=50")  # Fetch all peers (adjust limit as needed)
+
+    if "error" in response:
+        await update.message.reply_text(f"❌ Error fetching peers: {response['error']}")
+        return SELECT_PEER
+
+    peers = response.get("peers", [])
+    matched_peer = None
+
+    # Search for the peer by name
+    for peer in peers:
+        if peer.get("peer_name") == peer_name:
+            matched_peer = peer
+            break
+
+    if not matched_peer:
+        await update.message.reply_text("❌ Peer not found. Please enter a valid peer name:")
+        return SELECT_PEER
+
+    # Save the matched peer details in user_data
+    context.user_data["peer_name"] = peer_name
+    context.user_data["peer_details"] = matched_peer
+
+    # Show fields for editing
+    fields = "\n".join([f"{i+1}. **{key.capitalize()}**: {value}" for i, (key, value) in enumerate(matched_peer.items())])
+    message = f"🔧 **Peer Details**\n\n{fields}\n\nSend the **number** of the field you want to edit:"
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="edit_peer")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
+    return SELECT_FIELD
+
+
+# Step 3: Handle Field Selection
+async def select_field(update: Update, context: CallbackContext):
+    try:
+        field_index = int(update.message.text) - 1
+        fields = list(context.user_data["peer_details"].keys())
+        selected_field = fields[field_index]
+        context.user_data["selected_field"] = selected_field
+
+        await update.message.reply_text(f"✏️ Enter a new value for **{selected_field.capitalize()}**:")
+        return UPDATE_FIELD
+    except (ValueError, IndexError):
+        await update.message.reply_text("❌ Invalid selection. Please send the number of the field you want to edit:")
+        return SELECT_FIELD
+
+# Step 4: Update Field Value
+async def update_field(update: Update, context: CallbackContext):
+    new_value = update.message.text
+    selected_field = context.user_data["selected_field"]
+    context.user_data["peer_details"][selected_field] = new_value
+
+    message = f"✅ Updated **{selected_field.capitalize()}** to: {new_value}\n\nDo you want to confirm the changes? (yes/no)"
+    await update.message.reply_text(message, parse_mode="Markdown")
+    return CONFIRM_EDIT
+
+# Step 5: Confirm Changes
+async def confirm_edit(update: Update, context: CallbackContext):
+    if update.message.text.lower() != "yes":
+        await update.message.reply_text("❌ Peer edit canceled.", reply_markup=ReplyKeyboardRemove())
+        return ConversationHandler.END
+
+    peer_name = context.user_data["peer_name"]
+    updated_details = context.user_data["peer_details"]
+    data = {"peerName": peer_name, **updated_details}
+
+    response = api_request("api/edit-peer", method="POST", data=data)
+    if "error" in response:
+        await update.message.reply_text(f"❌ Error editing peer: {response['error']}")
+    else:
+        await update.message.reply_text(f"✅ Peer edited successfully!\n\n{response['message']}")
+    return ConversationHandler.END
+
+# Step 6: Cancel Edit
 async def cancel(update: Update, context: CallbackContext):
-    await update.message.reply_text("Peer creation canceled.", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text("❌ Peer edit canceled.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
+
 
 # Metrics
 async def metrics(update: Update, context: CallbackContext):
@@ -259,11 +372,23 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
+     # Conversation Handler for Edit Peer
+    edit_peer_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(edit_peer, pattern="edit_peer")],
+        states={
+            SELECT_PEER: [MessageHandler(filters.TEXT & ~filters.COMMAND, fetch_peer_details)],
+            SELECT_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_field)],
+            UPDATE_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_field)],
+            CONFIRM_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_edit)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
 
     # Register Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(peers_menu, pattern="peers_menu"))
     application.add_handler(peer_conversation)
+    application.add_handler(edit_peer_conversation)
 
     print("Bot is running...")
     application.run_polling()
