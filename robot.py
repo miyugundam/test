@@ -145,16 +145,24 @@ async def handle_back(update: Update, context: CallbackContext):
 
 # Initialize Bot
 def main():
-    try:
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CallbackQueryHandler(start, pattern="main_menu"))
-        # Add other handlers as necessary
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-        print("Bot is running...")
-        application.run_polling()
-    except Exception as e:
-        print(f"Error starting the bot: {e}")
+    # Register Command Handlers
+    application.add_handler(CommandHandler("start", start))
+
+    # Register CallbackQuery Handlers for menus
+    application.add_handler(CallbackQueryHandler(peers_menu, pattern="peers_menu"))
+    application.add_handler(CallbackQueryHandler(metrics, pattern="metrics"))
+    application.add_handler(CallbackQueryHandler(peer_status, pattern="peer_status"))
+    application.add_handler(CallbackQueryHandler(settings_menu, pattern="settings_menu"))
+    application.add_handler(CallbackQueryHandler(backup_menu, pattern="backup_menu"))
+
+    # Generic fallback for unknown callbacks
+    application.add_handler(CallbackQueryHandler(handle_back, pattern="main_menu|.*"))
+
+    print("Bot is running...")
+    application.run_polling()
+
 
 if __name__ == "__main__":
     main()
