@@ -6,6 +6,7 @@ from telegram.ext import filters
 PEER_NAME, PEER_IP, DATA_LIMIT, EXPIRY, CONFIG_FILE, DNS, CONFIRMATION = range(7)
 SELECT_PEER, SELECT_FIELD, UPDATE_FIELD, CONFIRM_EDIT = range(4)
 TOGGLE_BLOCK = range(1)
+SELECT_CONFIG, SELECT_PEER, TOGGLE_BLOCK = range(3)
 import re
 import requests
 
@@ -80,23 +81,49 @@ async def peers_menu(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
 
+
 async def block_unblock_peer(update: Update, context: CallbackContext):
     """
-    Ask for the peer name to toggle block/unblock status.
+    Initial entry point for the block/unblock feature.
     """
     chat_id = update.effective_chat.id
     message = (
         "🔒 **Block/Unblock Peer**\n\n"
-        "Please enter the **name** of the peer you want to block or unblock:"
+        "Please enter the **configuration file name** (e.g., wg0.conf):"
     )
     keyboard = [[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
+    return SELECT_CONFIG
+
+async def fetch_config(update: Update, context: CallbackContext):
+    """
+    Collect the configuration file name and proceed to fetch peer details.
+    """
+    config_name = update.message.text
+    if not re.match(r"^[a-zA-Z0-9_-]+\.conf$", config_name):
+        await update.message.reply_text("❌ Invalid configuration file name. Please try again:")
+        return SELECT_CONFIG
+
+    context.user_data["config_name"] = config_name
+
+    message = (
+        "🔒 **Block/Unblock Peer**\n\n"
+        "Please enter the **name** of the peer you want to block or unblock:"
+    )
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data="block_unblock_peer")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return SELECT_PEER
 
 async def fetch_block_status(update: Update, context: CallbackContext):
+    """
+    Fetch the block status of the specified peer from the given config.
+    """
     peer_name = update.message.text
-    response = api_request("api/peers?config=wg0.conf&page=1&limit=50")
+    config_name = context.user_data.get("config_name", "wg0.conf")  # Ensure config is set
+
+    response = api_request("api/peers?config=" + config_name + "&page=1&limit=50")
 
     if "error" in response:
         await update.message.reply_text(f"❌ Error fetching peers: {response['error']}")
@@ -108,65 +135,75 @@ async def fetch_block_status(update: Update, context: CallbackContext):
     if not matched_peer:
         await update.message.reply_text(
             "❌ Peer not found. Please enter a valid peer name:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]),
-            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="block_unblock_peer")]]),
+            parse_mode="Markdown"
         )
         return SELECT_PEER
 
-    # Store the matched peer in user_data
     context.user_data["matched_peer"] = matched_peer
 
-    # Prepare the toggle prompt
-    peer_status = "Blocked" if matched_peer.get("expiry_blocked") else "Unblocked"
+    # Show current block status
+    is_blocked = matched_peer.get("monitor_blocked", False)
+    status = "Blocked" if is_blocked else "Unblocked"
     message = (
         f"🔒 **Block/Unblock Peer**\n\n"
-        f"📛 **Peer Name:** {matched_peer['peer_name']}\n"
-        f"⚡ **Current Status:** {peer_status}\n\n"
-        "Would you like to toggle the status?"
+        f"📛 <b>Peer Name:</b> {peer_name}\n"
+        f"⚡ <b>Current Status:</b> {status}\n\n"
+        f"Would you like to toggle the status?"
     )
     keyboard = [
-        [InlineKeyboardButton("✅ Yes", callback_data="toggle_yes")],
+        [InlineKeyboardButton("✅ Yes", callback_data="toggle_status")],
         [InlineKeyboardButton("❌ No", callback_data="peers_menu")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
+    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
     return TOGGLE_BLOCK
 
 
 async def toggle_block_status(update: Update, context: CallbackContext):
+    """
+    Toggle the block/unblock status of the peer.
+    """
     query = update.callback_query
     await query.answer()
 
-    # Retrieve the matched peer
     matched_peer = context.user_data.get("matched_peer")
+    config_name = context.user_data.get("config_name", "wg0.conf")
     if not matched_peer:
         await query.message.reply_text("❌ No peer data found. Please try again.")
         return ConversationHandler.END
 
-    # Toggle the block status
-    is_blocked = matched_peer.get("expiry_blocked", False)
+    is_blocked = matched_peer.get("monitor_blocked", False)
     new_status = not is_blocked
-    matched_peer["expiry_blocked"] = new_status
 
-    # Prepare the API request to update the peer's block status
+    # Prepare the payload
     data = {
         "peerName": matched_peer["peer_name"],
-        "block": new_status,  # Assuming your API supports a "block" parameter
+        "blocked": new_status,
+        "config": config_name,
     }
-    response = api_request("api/toggle-block", method="POST", data=data)
+
+    response = api_request("api/toggle-peer", method="POST", data=data)
 
     if "error" in response:
         await query.message.reply_text(f"❌ Error toggling peer status: {response['error']}")
         return ConversationHandler.END
 
-    # Confirm the change
-    status_message = "Blocked" if new_status else "Unblocked"
-    await query.message.reply_text(
-        f"✅ Peer status updated successfully!\n\n📛 **Peer Name:** {matched_peer['peer_name']}\n"
-        f"⚡ **New Status:** {status_message}",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]),
-        parse_mode="Markdown",
+    # Update local status
+    matched_peer["monitor_blocked"] = new_status
+    matched_peer["expiry_blocked"] = new_status
+    context.user_data["matched_peer"] = matched_peer
+
+    # Notify the user
+    status = "Blocked" if new_status else "Unblocked"
+    message = (
+        f"🔒 **Peer Name:** {matched_peer['peer_name']}\n"
+        f"⚡ **New Status:** {status}\n\n"
+        "✅ Peer status updated successfully!"
     )
+    keyboard = [[InlineKeyboardButton("🔙 Back to Peers Menu", callback_data="peers_menu")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text(message, reply_markup=reply_markup, parse_mode="Markdown")
     return ConversationHandler.END
 
 
@@ -697,11 +734,14 @@ def main():
     block_unblock_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(block_unblock_peer, pattern="block_unblock_peer")],
         states={
+            SELECT_CONFIG: [MessageHandler(filters.TEXT & ~filters.COMMAND, fetch_config)],
             SELECT_PEER: [MessageHandler(filters.TEXT & ~filters.COMMAND, fetch_block_status)],
-            TOGGLE_BLOCK: [CallbackQueryHandler(toggle_block_status, pattern="toggle_yes")],
+            TOGGLE_BLOCK: [CallbackQueryHandler(toggle_block_status, pattern="toggle_status")],
         },
         fallbacks=[CallbackQueryHandler(peers_menu, pattern="peers_menu")],
+        allow_reentry=True,
     )
+
 
 
 
