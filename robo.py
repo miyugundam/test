@@ -193,31 +193,21 @@ async def edit_peer(update: Update, context: CallbackContext):
 
 # Step 2: Fetch and Show Peer Details
 async def fetch_peer_details(update: Update, context: CallbackContext):
-    peer_name = update.message.text
-    page = 1
-    limit = 10
+    peer_name = update.message.text  # User-provided peer name
+    response = api_request(f"api/peers?config=wg0.conf&page=1&limit=50")  # Fetch all peers (adjust limit as needed)
+
+    if "error" in response:
+        await update.message.reply_text(f"❌ Error fetching peers: {response['error']}")
+        return SELECT_PEER
+
+    peers = response.get("peers", [])
     matched_peer = None
 
-    # Fetch all peers across pages
-    while True:
-        response = api_request(f"api/peers?config=wg0.conf&page={page}&limit={limit}")
-        if "error" in response:
-            await update.message.reply_text(f"❌ Error fetching peers: {response['error']}")
-            return SELECT_PEER
-
-        peers = response.get("peers", [])
-        total_pages = response.get("total_pages", 1)
-
-        # Search for the peer by name
-        for peer in peers:
-            if peer.get("peer_name") == peer_name:
-                matched_peer = peer
-                break
-
-        if matched_peer or page >= total_pages:
+    # Search for the peer by name
+    for peer in peers:
+        if peer.get("peer_name") == peer_name:
+            matched_peer = peer
             break
-
-        page += 1
 
     if not matched_peer:
         await update.message.reply_text("❌ Peer not found. Please enter a valid peer name:")
@@ -398,6 +388,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(peers_menu, pattern="peers_menu"))
     application.add_handler(peer_conversation)
+    application.add_handler(edit_peer_conversation)
 
     print("Bot is running...")
     application.run_polling()
