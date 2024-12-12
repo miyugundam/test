@@ -6,7 +6,7 @@ from telegram.ext import filters
 from telegram.helpers import escape_markdown
 PEER_NAME, PEER_IP, DATA_LIMIT, EXPIRY, CONFIG_FILE, DNS, CONFIRMATION = range(7)
 SELECT_PEER, SELECT_FIELD, UPDATE_FIELD, CONFIRM_EDIT = range(4)
-
+import re
 import requests
 
 # Load Config
@@ -221,7 +221,7 @@ async def fetch_peer_details(update: Update, context: CallbackContext):
     # Escape Markdown special characters in peer details
     fields = "\n".join(
         [
-            f"{i+1}. *{escape_markdown(key.capitalize())}*: {escape_markdown(str(value))}"
+            f"{i+1}. *{escape_markdown(key.capitalize(), version=2)}*: {escape_markdown(str(value), version=2)}"
             for i, (key, value) in enumerate(matched_peer.items())
         ]
     )
@@ -400,6 +400,6 @@ def main():
     application.run_polling()
 
 
-
+#te
 if __name__ == "__main__":
     main()
