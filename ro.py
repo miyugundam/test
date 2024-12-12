@@ -683,31 +683,33 @@ async def metrics(update: Update, context: CallbackContext):
     Fetch and display system metrics in a visually appealing format.
     """
     chat_id = update.effective_chat.id
-    data = api_request("api/metrics")  # Assume a metrics API exists
+    try:
+        # Fetch metrics data
+        data = api_request("api/metrics")
 
-    if not data or "error" in data:
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ Error fetching metrics: {data.get('error', 'Unknown error')}")
-        return
+        if "error" in data:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ Error: {data['error']}")
+            return
 
-    # Safely extract data and handle missing keys
-    cpu = data.get('cpu', 'N/A')
-    ram = data.get('ram', 'N/A')
-    disk_used = data.get('disk', {}).get('used', 'N/A')
-    disk_total = data.get('disk', {}).get('total', 'N/A')
-    uptime = data.get('uptime', 'N/A')
+        # Format the response for display
+        message = (
+            "📊 **System Metrics**\n\n"
+            f"🖥 **CPU Usage:** {data.get('cpu', 'N/A')}\n"
+            f"💾 **RAM Usage:** {data.get('ram', 'N/A')}\n"
+            f"💽 **Disk Usage:** {data.get('disk', {}).get('used', 'N/A')} / {data.get('disk', {}).get('total', 'N/A')} "
+            f"({data.get('disk', {}).get('percent', 'N/A')}%)\n"
+            f"⏳ **Uptime:** {data.get('uptime', 'N/A')}\n"
+        )
 
-    # Format the message
-    message = (
-        "📊 **System Metrics**\n\n"
-        f"🖥 **CPU Usage:** {cpu}%\n"
-        f"💾 **RAM Usage:** {ram}%\n"
-        f"💽 **Disk Usage:** {disk_used} / {disk_total}\n"
-        f"⏳ **Uptime:** {uptime}\n"
-    )
+        # Send the message
+        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
 
-    keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup, parse_mode="Markdown")
+    except Exception as e:
+        # Handle unexpected errors
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ An error occurred while fetching metrics: {e}")
+
 
 
 
